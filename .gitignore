@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# Node
+node_modules/
+dist/
+build/
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Models
+*.h5
+*.pb
+*.tflite
+
+# OS
+.DS_Store
+Thumbs.db
