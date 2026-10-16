@@ -19,7 +19,7 @@ jobs:
           npm ci
           npm run build
       - name: Upload frontend artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: frontend-build
           path: frontend/dist
@@ -39,7 +39,7 @@ jobs:
         working-directory: ./firmware
         run: pio run
       - name: Upload firmware artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: firmware-build
           path: firmware/.pio/build
@@ -50,12 +50,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Download frontend artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: frontend-build
           path: frontend/dist
       - name: Download firmware artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: firmware-build
           path: firmware/.pio/build
