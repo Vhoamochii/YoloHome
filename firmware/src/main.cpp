@@ -1,94 +1,97 @@
-// bareboard_demo.cpp — see bareboard_demo.h.
-#include "bareboard_demo.h"
-
+// main.cpp — integration test: real sensors -> sensor task -> cloud task -> Adafruit IO,
+// and LED colour commands back from Adafruit IO to the on-board RGB LED.
+//
+// Prints a status line every 5 s. Plug the DHT20 into the I2C port; enable the light sensor and
+// PIR with -D SENSOR_HAS_LIGHT=1 / -D SENSOR_HAS_PIR=1 in platformio.ini when they are attached.
+// Do not also start the bare-board demo: both would feed readings to the cloud task.
+#include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
 #include <math.h>
 
 #include "adafruitio_task.h"
 #include "config.h"
+#include "sensor_task.h"
 
-#ifndef DEMO_BLINK_ON_MS
-#define DEMO_BLINK_ON_MS  1000
+// Weak: if your firmware already defines these, the linker uses yours instead.
+__attribute__((weak)) EventGroupHandle_t gSystemEvents = nullptr;
+#ifdef SENSOR_FORWARD_FRAMES
+__attribute__((weak)) QueueHandle_t qSensorFrames = nullptr;   // null = not forwarded in this test
 #endif
-#ifndef DEMO_BLINK_OFF_MS
-#define DEMO_BLINK_OFF_MS 1000
-#endif
-#define DEMO_SAMPLE_MS 500     // how often the LED state is sampled into the cloud task
-#define DEMO_STEP_MS    50
 
 namespace {
 
-constexpr bool kBlinkOnRgb = ONBOARD_LED_PIN < 0;   // Yolo:Bit has no single LED
 Adafruit_NeoPixel rgb(1, ONBOARD_RGB_PIN, NEO_GRB + NEO_KHZ800);
-bool ledOn = false;
-uint32_t rgbColor = kBlinkOnRgb ? 0xFFFFFF : 0x000000;   // what yolohome-led last set
-uint32_t nextToggle = 0, nextSample = 0;
 
-void showRgb(uint32_t c) {
-  rgb.setPixelColor(0, rgb.Color((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF));
-  rgb.show();
-}
-
-void setLed(bool on) {
-  ledOn = on;
-#if ONBOARD_LED_PIN >= 0
-  digitalWrite(ONBOARD_LED_PIN, on ? HIGH : LOW);
-#else
-  showRgb(on ? rgbColor : 0);
-#endif
-}
-
-// What the real control-logic task will do: act on the command, then ACK it.
-void handle(const cloud::Command& c) {
+// Stand-in for the control-logic task: LED commands drive the on-board RGB LED, everything
+// else is refused, and every command is ACKed so the backend sees the result.
+void handleCommands() {
+  CloudCommandMsg m;
   char val[12];
-  cloud::formatValue(c, val, sizeof val);
-  if (c.device == cloud::Device::Led) {
-    rgbColor = c.rgb;
-    if (!kBlinkOnRgb) showRgb(rgbColor);
-    else if (ledOn) showRgb(rgbColor);
-    cloud_post_ack(c.device, c.id, true, val, c.actor);
+  while (xQueueReceive(qCloudCommands, &m, 0) == pdTRUE) {
+    cloud::formatValue(m.cmd, val, sizeof val);
+    const char* id = m.cmd.id[0] ? m.cmd.id : "-";
+    if (m.cmd.device == cloud::Device::Led) {
+      uint32_t c = m.cmd.rgb;
+      rgb.setPixelColor(0, rgb.Color((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF));
+      rgb.show();
+      cloud_post_ack(m.cmd.device, m.cmd.id, true, val, m.cmd.actor);
+      Serial.printf("[cmd]  led -> #%s  (id %s, actor %c)\n", val, id, cloud::actorCode(m.cmd.actor));
+    } else {
+      cloud_post_ack(m.cmd.device, m.cmd.id, false, val, m.cmd.actor, "NOHW");
+      Serial.printf("[cmd]  %s %s refused: no actuator in this test (id %s)\n",
+                    cloud::deviceName(m.cmd.device), val, id);
+    }
+  }
+}
+
+const char* fmt(float v, const char* format, char* buf, size_t n) {
+  if (isnan(v)) return "n/a";
+  snprintf(buf, n, format, double(v));
+  return buf;
+}
+
+void report() {
+  bool up = gSystemEvents && (xEventGroupGetBits(gSystemEvents) & EVT_CLOUD_UP);
+  CloudStats s = cloud_stats();
+  SensorReading r;
+  char t[12], h[12], l[12];
+  if (sensor_latest(r)) {
+    Serial.printf("[test] T=%s C  RH=%s %%  light=%s %%  motion=%s | cloud %s | published %lu, "
+                  "rate-dropped %lu, backlog %u\n",
+                  fmt(r.temperature, "%.2f", t, sizeof t), fmt(r.humidity, "%.1f", h, sizeof h),
+                  fmt(r.light, "%.0f", l, sizeof l),
+                  r.presenceValid ? (r.presence ? "yes" : "no") : "n/a", up ? "UP" : "down",
+                  (unsigned long)s.published, (unsigned long)s.rateDropped, unsigned(s.backlog));
   } else {
-    cloud_post_ack(c.device, c.id, false, val, c.actor, "NOHW");   // no fan/relay attached
+    Serial.printf("[test] no sensor reading yet | cloud %s\n", up ? "UP" : "down");
   }
 }
 
 }  // namespace
 
-void bareboard_demo_setup() {
-#if ONBOARD_LED_PIN >= 0
-  pinMode(ONBOARD_LED_PIN, OUTPUT);
-#endif
+void setup() {
+  Serial.begin(115200);
+  delay(1500);                                  // time for the USB serial monitor to attach
+  Serial.println("\n=== YoloHome test: sensor task + Adafruit IO ===");
+  Serial.printf("board %s | I2C SDA %d, SCL %d | light %s, PIR %s\n", BOARD_NAME, DHT_SDA, DHT_SCL,
+                SENSOR_HAS_LIGHT ? "on" : "off", SENSOR_HAS_PIR ? "on" : "off");
+
+  if (!gSystemEvents) gSystemEvents = xEventGroupCreate();
+  cloud_init();                                 // queues first, before any task uses them
   rgb.begin();
-  rgb.setBrightness(40);                      // full brightness is uncomfortable up close
-  showRgb(kBlinkOnRgb ? 0 : rgbColor);
-  nextToggle = nextSample = millis();
-  cloud_post_mode("BAREBOARD_DEMO");          // queued until the link is up
+  rgb.setBrightness(40);
+  rgb.show();                                   // RGB LED off until a colour arrives
+
+  xTaskCreatePinnedToCore(task_adafruitio, "cloud", 8192, nullptr, 2, nullptr, 0);
+  xTaskCreatePinnedToCore(task_sensor, "sensor", 4096, nullptr, 3, nullptr, 1);
 }
 
-void bareboard_demo_step() {
-  uint32_t now = millis();
-  if (int32_t(now - nextToggle) >= 0) {
-    setLed(!ledOn);
-    nextToggle = now + (ledOn ? DEMO_BLINK_ON_MS : DEMO_BLINK_OFF_MS);
+void loop() {
+  handleCommands();
+  static uint32_t lastReport = 0;
+  if (millis() - lastReport >= 5000) {
+    lastReport = millis();
+    report();
   }
-  if (int32_t(now - nextSample) >= 0) {
-    nextSample += DEMO_SAMPLE_MS;
-    cloud::Sample s;
-    s.temp = NAN;                             // no DHT20: temperature/humidity not published
-    s.humi = NAN;
-    s.light = ledOn ? 100.0f : 0.0f;          // the light the board itself generates
-    s.presenceValid = false;                  // no motion sensor: presence not published
-    cloud_post_sample(s);
-  }
-  CloudCommandMsg m;
-  while (xQueueReceive(qCloudCommands, &m, 0) == pdTRUE) handle(m.cmd);
-}
-
-void task_bareboard_demo(void* parameter) {
-  (void)parameter;
-  bareboard_demo_setup();
-  for (;;) {
-    bareboard_demo_step();
-    vTaskDelay(pdMS_TO_TICKS(DEMO_STEP_MS));
-  }
+  vTaskDelay(pdMS_TO_TICKS(50));
 }
