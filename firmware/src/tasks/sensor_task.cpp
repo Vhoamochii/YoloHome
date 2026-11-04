@@ -8,6 +8,7 @@
 
 #include "adafruitio_task.h"
 #include "config.h"
+#include "i2c_bus.h"
 
 namespace {
 
@@ -28,7 +29,10 @@ float readLightPercent() {
 
 void tryStartDht() {
   lastBeginTry = millis();
-  dhtReady = dht.begin();                    // just checks the sensor answers on I2C
+  {
+    I2cLock lock;
+    dhtReady = dht.begin();                  // just checks the sensor answers on I2C
+  }
   Serial.println(dhtReady ? "[sensor] DHT20 found"
                           : "[sensor] DHT20 not found: check it is on the I2C port (SDA 11, SCL 12)");
 }
@@ -65,7 +69,11 @@ void task_sensor(void* parameter) {
 
     if (!dhtReady && millis() - lastBeginTry > 5000) tryStartDht();   // plugged in later
     if (dhtReady) {
-      int status = dht.read();
+      int status;
+      {
+        I2cLock lock;                        // the LCD shares the bus from another task
+        status = dht.read();
+      }
       if (status == DHT20_OK) {
         r.temperature = dht.getTemperature();
         r.humidity = dht.getHumidity();

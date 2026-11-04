@@ -3,6 +3,8 @@
 
 #include <Adafruit_NeoPixel.h>
 #include <math.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "adafruitio_task.h"
 #include "config.h"
@@ -23,6 +25,16 @@ Adafruit_NeoPixel rgb(1, ONBOARD_RGB_PIN, NEO_GRB + NEO_KHZ800);
 bool ledOn = false;
 uint32_t rgbColor = kBlinkOnRgb ? 0xFFFFFF : 0x000000;   // what yolohome-led last set
 uint32_t nextToggle = 0, nextSample = 0;
+
+// Wall-clock time in UTC with milliseconds. The cloud task syncs the clock over NTP once it
+// is connected; until then this prints a 1970 time.
+void printUtc() {
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  struct tm t;
+  gmtime_r(&tv.tv_sec, &t);
+  Serial.printf("%02d:%02d:%02d.%03ld UTC", t.tm_hour, t.tm_min, t.tm_sec, long(tv.tv_usec / 1000));
+}
 
 void showRgb(uint32_t c) {
   rgb.setPixelColor(0, rgb.Color((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF));
@@ -81,7 +93,16 @@ void bareboard_demo_step() {
     cloud_post_sample(s);
   }
   CloudCommandMsg m;
-  while (xQueueReceive(qCloudCommands, &m, 0) == pdTRUE) handle(m.cmd);
+  while (xQueueReceive(qCloudCommands, &m, 0) == pdTRUE) {
+    handle(m.cmd);
+    // receivedMs is when the cloud task got it from Adafruit IO; the line is printed right
+    // after the LED changed, so "applied +N ms" is the time spent inside the board.
+    Serial.print("[");
+    printUtc();
+    Serial.printf("] %s command id=%s applied +%lu ms after arriving from Adafruit IO\n",
+                  cloud::deviceName(m.cmd.device), m.cmd.id[0] ? m.cmd.id : "-",
+                  (unsigned long)(millis() - m.receivedMs));
+  }
 }
 
 void task_bareboard_demo(void* parameter) {

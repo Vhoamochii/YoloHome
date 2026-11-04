@@ -5,8 +5,6 @@
 // It defines WIFI_SSID, WIFI_PASSWORD, AIO_USERNAME, AIO_KEY.
 #include "secrets.h"
 
-#define BOARD_YOLO_UNO
-
 // ---------------------------------------------------------------------------------------
 // GPIO Pin Configuration — chosen by the chip being compiled for, so switching boards only
 // means switching the PlatformIO environment (see platformio.ini).
@@ -20,18 +18,22 @@
 //   any I2C library's begin(), and never use SDA/SCL/LED_BUILTIN/Dn/An by name.
 //   D3=6 D4=7 D5=8 D6=9 D7=10 D8=17 D9=18 D10=21 D11=38 D12=47 D13=48
 #define BOARD_NAME        "Yolo Uno"
-#define DHT_SDA    11   // A4
-#define DHT_SCL    12   // A5
+// I2C: the red Grove ports labelled I2C1 and I2C2 — one bus, two sockets. Plug the DHT20
+// into one and the LCD into the other; either way round works.
+#define DHT_SDA    11   // = A4
+#define DHT_SCL    12   // = A5
 #define LCD_SDA    11
 #define LCD_SCL    12
 #define FAN_PIN    10   // D7  (port D7-D8)  — used by last year's working code
 #define LED_PIN    18   // D9  (port D9-D10) — used by last year's working code
 #define LIGHT_PIN   1   // A0  (port A0-A1)  — inferred, confirm on your board
-#define PIR_PIN     6   // D3  (port D3-D4)  — inferred, confirm on your board
+#define PIR_PIN    38   // D11 (port D11-D12) — inferred, confirm on your board
 #define RELAY_PIN   8   // D5  (port D5-D6)  — inferred, confirm on your board
 #define BUZZER_PIN -1   // the Yolo Uno has no buzzer
 #define ONBOARD_LED_PIN  48   // D13 / LED_BUILTIN
 #define ONBOARD_RGB_PIN  45   // single RGB LED (NeoPixel)
+#define SW1_PIN           6   // 2-button module on the D3-D4 Grove port: SW1 = yellow (D3)
+#define SW2_PIN           7   //                                         SW2 = white  (D4)
 #else
 // ===== Yolo:Bit (ESP32) + expansion board =====
 //   Single-signal slots: P0=32  P1=33  P2=27 (analog via GPIO39)
@@ -51,13 +53,35 @@
 #define BUZZER_PIN 25   // on the Yolo:Bit itself, no slot needed
 #define ONBOARD_LED_PIN  -1   // no single LED
 #define ONBOARD_RGB_PIN   4   // the 5x5 RGB matrix; the demo lights only its first pixel
+#define SW1_PIN          35   // on-board button A
+#define SW2_PIN          14   // on-board button B
+#endif
+
+// ---- Shared by both boards --------------------------------------------------------------
+#define STRIP_LED_COUNT   4       // the kit's 4-LED RGB module on LED_PIN
+#define LCD_ADDR       0x21       // the kit's LCD 16x2 (last year's working value). If the boot
+                                  // I2C scan shows 0x27 or 0x3F instead, use that.
+#define TZ_OFFSET_S   25200       // UTC+7, for "MANUAL_LOCKDOWN until HH:MM"
+
+// ---- No device may share a pin with the I2C bus ------------------------------------------
+#define _YH_ON_I2C(p) ((p) >= 0 && ((p) == DHT_SDA || (p) == DHT_SCL))
+#if _YH_ON_I2C(FAN_PIN) || _YH_ON_I2C(LED_PIN) || _YH_ON_I2C(LIGHT_PIN) || \
+    _YH_ON_I2C(PIR_PIN) || _YH_ON_I2C(RELAY_PIN) || _YH_ON_I2C(BUZZER_PIN) || \
+    _YH_ON_I2C(SW1_PIN) || _YH_ON_I2C(SW2_PIN)
+#error "A device in config.h uses one of the I2C pins (DHT_SDA / DHT_SCL)"
+#endif
+
+#define _YH_ON_BTN(p) ((p) >= 0 && ((p) == SW1_PIN || (p) == SW2_PIN))
+#if _YH_ON_BTN(FAN_PIN) || _YH_ON_BTN(LED_PIN) || _YH_ON_BTN(LIGHT_PIN) || \
+    _YH_ON_BTN(PIR_PIN) || _YH_ON_BTN(RELAY_PIN) || _YH_ON_BTN(BUZZER_PIN)
+#error "A device in config.h uses one of the button pins (SW1_PIN / SW2_PIN)"
 #endif
 
 // ---- Safety checks, per chip ----------------------------------------------------------
 #define _YH_IN(p, lo, hi) ((p) >= (lo) && (p) <= (hi))
 #define _YH_ANY_PIN(test) (test(DHT_SDA) || test(DHT_SCL) || test(FAN_PIN) || test(LED_PIN) || \
                            test(LCD_SDA) || test(LCD_SCL) || test(LIGHT_PIN) || test(PIR_PIN) || \
-                           test(RELAY_PIN))
+                           test(RELAY_PIN) || test(SW1_PIN) || test(SW2_PIN))
 #if defined(CONFIG_IDF_TARGET_ESP32)     // Yolo:Bit
 #define _YH_FLASH(p) _YH_IN(p, 6, 11)
 #if _YH_ANY_PIN(_YH_FLASH)
