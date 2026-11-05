@@ -1,0 +1,4 @@
+# USB capture / optional MQTT gateway. Python 3.10.11 works.
+pyserial==3.5
+paho-mqtt==2.1.0
+python-dotenv==1.0.1

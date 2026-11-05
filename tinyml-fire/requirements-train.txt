@@ -1,0 +1,3 @@
+-r requirements-tools.txt
+tensorflow==2.15.1
+scikit-learn==1.5.2

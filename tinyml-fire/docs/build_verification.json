@@ -1,0 +1,40 @@
+{
+  "compiler": "Xtensa ESP32-S3 8.4.0+2021r2-patch5",
+  "platform": "espressif32@7.1.2",
+  "arduino_core": "2.0.17",
+  "hardware_connected": false,
+  "profiles": {
+    "yolo_uno": {
+      "status": "SUCCESS",
+      "ram_static_bytes": 19068,
+      "flash_app_bytes": 281973
+    },
+    "yolo_uno_sim": {
+      "status": "SUCCESS"
+    },
+    "yolo_uno_tinyml": {
+      "status": "SUCCESS",
+      "ram_static_bytes": 61228,
+      "flash_app_bytes": 916301,
+      "original_sources_compiled": [
+        ".pio/build/yolo_uno_tinyml/src/firmware/src/actuators.cpp.o",
+        ".pio/build/yolo_uno_tinyml/src/firmware/src/control.cpp.o",
+        ".pio/build/yolo_uno_tinyml/src/firmware/src/i2c_bus.cpp.o",
+        ".pio/build/yolo_uno_tinyml/src/firmware/src/tasks/adafruitio_task.cpp.o",
+        ".pio/build/yolo_uno_tinyml/src/firmware/src/tasks/control_task.cpp.o",
+        ".pio/build/yolo_uno_tinyml/src/firmware/src/tasks/display_task.cpp.o",
+        ".pio/build/yolo_uno_tinyml/src/firmware/src/tasks/sensor_task.cpp.o"
+      ],
+      "addon_entry_point_compiled": true,
+      "dependency_install_note": "Direct required libraries installed; test harness skipped transitive package installation for unused other-board/demo libraries. Real PlatformIO compiler/linker and unchanged project build settings were used."
+    }
+  },
+  "required_integration_libraries": {
+    "Adafruit IO Arduino": "4.3.7",
+    "Adafruit MQTT Library": "2.6.6",
+    "ArduinoHttpClient": "0.6.1",
+    "Adafruit NeoPixel": "1.15.1",
+    "DHT20": "0.3.1",
+    "LiquidCrystal_I2C": "1.1.4"
+  }
+}

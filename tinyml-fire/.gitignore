@@ -1,0 +1,9 @@
+.venv*/
+.env
+__pycache__/
+*.pyc
+.pio/
+data/captures/
+data/labeled/
+models/retrained/
+*.log
