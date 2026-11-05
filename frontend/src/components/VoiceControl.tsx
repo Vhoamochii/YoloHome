@@ -20,7 +20,7 @@ export default function VoiceControl() {
   return (
     <button
       onClick={startVoiceRecognition}
-      className="fixed bottom-8 right-8 bg-blue-500 text-white p-4 rounded-full shadow-lg"
+      className={`fixed bottom-8 right-8 ${isListening ? 'bg-red-500 animate-pulse' : 'bg-blue-500'} text-white p-4 rounded-full shadow-lg`}
     >
       🎤
     </button>
