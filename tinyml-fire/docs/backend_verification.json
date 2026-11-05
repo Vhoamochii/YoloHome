@@ -1,0 +1,11 @@
+{
+  "original_files_compared": 83,
+  "original_files_unchanged": true,
+  "backend_parser_accepts": [
+    "TINYML:OK:0.001",
+    "TINYML:ALERT:0.824",
+    "TINYML:SENSOR_ERROR:-1.000"
+  ],
+  "live_broker_or_database_test": false,
+  "original_zip_sha256": "f6fb0200e0d2676a215a5d412d87e72d979c2e37aba8f7a6a0a1954df26b9b2a"
+}
