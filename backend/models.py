@@ -48,6 +48,14 @@ class SensorHistory(Base):
     humidity = Column(Float)
     recorded_at = Column(DateTime, default=datetime.utcnow)
 
+class FireAlertHistory(Base):
+    __tablename__ = "lich_su_canh_bao_chay"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    score = Column(Float)
+    state = Column(String(50))
+    recorded_at = Column(DateTime, default=datetime.utcnow)
+
 class Schedule(Base):
     __tablename__ = "lich_trinh"
     

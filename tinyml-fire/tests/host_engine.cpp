@@ -10,24 +10,32 @@ int main(int argc, char**) {
     return 0;
   }
   tinyfire::Engine e;
-  auto r = e.update(28, 65);
-  assert(r.valid && !r.alarm);
-  r = e.update(50, 20);
-  assert(r.heat && !r.ml && r.alarm); // Guard is immediate; ML still needs 3 samples.
-  e.update(50, 20);
-  r = e.update(50, 20);
-  assert(r.ml && r.heat);
+  auto r = e.update(33.74f, 51.034f);
+  assert(r.valid && !r.alarm && r.score > 0.69f && r.score < 0.72f);
+  r = e.update(38, 50);
+  assert(!r.ml && !r.heat && !r.alarm);
+  e.update(38, 50);
+  r = e.update(38, 50);
+  assert(r.ml && !r.heat && r.alarm); // ML alert below the separate 45 C guard.
   r = e.update(NAN, NAN);
-  assert(!r.valid && r.alarm && r.ml && r.heat); // Fault must not clear a latched alert.
-  e.update(28, 65);
-  e.update(28, 65);
-  r = e.update(28, 65);
-  assert(!r.alarm && !r.ml && !r.heat);
+  assert(!r.valid && r.alarm && r.ml);
+  e.update(33, 50); e.update(33, 50);
+  r = e.update(33, 50);
+  assert(!r.ml && !r.alarm);
+  assert(e.update(45, 50).heat);
+  assert(e.update(44, 50).heat);
+  assert(!e.update(43, 50).heat);
   assert(!e.update(20, 101).valid);
   assert(!e.update(std::numeric_limits<float>::infinity(), 20).valid);
   assert(std::isnan(tinyfire::infer(-41, 50)));
-  assert(e.update(60, 70).heat); // Original model misses this case; independent guard catches heat.
-  assert(e.update(44, 70).heat);
-  assert(!e.update(43, 70).heat);
-  std::puts("host_engine: OK");
+  for (int h = 0; h <= 100; h += 5) {
+    float previous = -1;
+    for (int t = -40; t <= 80; ++t) {
+      float p = tinyfire::infer(float(t), float(h));
+      assert(p >= 0 && p <= 1 && p >= previous);
+      previous = p;
+    }
+  }
+  assert(tinyfire::infer(34.486f,63.831f) > tinyfire::infer(33.74f,51.034f));
+  std::puts("host_engine: temperature dominance, invalid samples, ML/heat hysteresis OK");
 }

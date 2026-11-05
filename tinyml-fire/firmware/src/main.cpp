@@ -3,10 +3,12 @@
 #include <DHT20.h>
 #include "fire_config.h"
 #include "fire_serial.h"
+#include "fire_lcd.h"
 
 namespace {
 DHT20 sensor;
 tinyfire::Engine engine;
+FireLcd display;
 bool ready = false;
 uint32_t seq = 0, lastSample = 0;
 }
@@ -29,6 +31,7 @@ void setup() {
     if (Wire.endTransmission() == 0) Serial.printf("[i2c] 0x%02X\n", a);
   }
   ready = sensor.begin();
+  display.begin(TINYML_SIMULATED);
 }
 
 void loop() {
@@ -52,6 +55,7 @@ void loop() {
   tinyfire::Result r = engine.update(t, h);
   uint32_t inferenceUs = micros() - beginUs;
   tinyfire::emit(r, t, h, millis(), ++seq, inferenceUs, TINYML_SIMULATED);
+  display.update(r, t, h);
   // Blink for missing sensor, steady light for alarm, off for normal operation.
   digitalWrite(FIRE_LED_PIN, r.alarm || (!r.valid && (seq % 2)) ? HIGH : LOW);
 #if FIRE_BUZZER_PIN >= 0

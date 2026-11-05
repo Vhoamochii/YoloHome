@@ -4,7 +4,8 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 from database import get_db
-from models import SensorHistory
+from models import SensorHistory, FireAlertHistory
+from adafruit_mqtt import mqtt_client
 
 router = APIRouter()
 
@@ -22,6 +23,33 @@ async def get_current_sensors(db: Session = Depends(get_db)):
         "temperature": None,
         "humidity": None,
         "timestamp": None
+    }
+
+
+@router.get("/fire-status")
+async def get_fire_status(db: Session = Depends(get_db)):
+    """
+    Get latest TinyML fire detection status from live MQTT stream or database.
+    """
+    state = mqtt_client.get_state()
+    fire_alert = state.get("fire_alert")
+    if fire_alert:
+        return fire_alert
+
+    latest = db.query(FireAlertHistory).order_by(FireAlertHistory.recorded_at.desc()).first()
+    if latest:
+        return {
+            "state": latest.state,
+            "score": latest.score,
+            "is_alarm": (latest.state == "ALERT"),
+            "updated_at": latest.recorded_at.isoformat() if latest.recorded_at else None
+        }
+
+    return {
+        "state": "OK",
+        "score": None,
+        "is_alarm": False,
+        "updated_at": None
     }
 
 

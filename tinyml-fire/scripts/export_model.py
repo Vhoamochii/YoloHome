@@ -76,6 +76,5 @@ if __name__ == "__main__":
     args = p.parse_args()
     result = export_h5(args.source, args.out)
     if args.install:
-        import shutil
-        shutil.copyfile(args.out / "model_weights.h", ROOT / "firmware/include/model_weights.h")
+        raise SystemExit("Legacy H5 is reference-only. Use train_temperature_model.py --install for current firmware.")
     print("Exported model", result["id"])

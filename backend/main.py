@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import engine, Base
-from models import User, FaceProfile, Device, DeviceStatus, SensorHistory, Schedule
+from models import User, FaceProfile, Device, DeviceStatus, SensorHistory, Schedule, FireAlertHistory
 from routes import auth, devices, sensors, webhook
 from adafruit_mqtt import mqtt_client
 

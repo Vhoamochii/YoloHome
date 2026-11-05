@@ -1,0 +1,12 @@
+{
+  "grid_points": 12221,
+  "max_absolute_error_cpp_vs_formula": 8.910116111593425e-08,
+  "model_id": "7129a5137abe",
+  "temperature_coefficient_positive": true,
+  "humidity_total_equivalent_c": 1.0000000354110232,
+  "cross_compiled_esp32_in_this_revision": false,
+  "hardware_tested_in_this_revision": false,
+  "host_behavior_tests": "passed",
+  "protocol_tests": 6,
+  "training_accuracy_note": "See models/temperature_priority/training_report.json. Both legacy CSVs used for training; no independent test accuracy claimed."
+}

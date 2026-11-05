@@ -1,0 +1,22 @@
+{
+  "kind": "temperature_dominant_logistic",
+  "a": 3.366445779800415,
+  "c": -0.16832229495048523,
+  "b": 1.3009371757507324,
+  "mean": [
+    35.0,
+    50.0
+  ],
+  "scale": [
+    10.0,
+    50.0
+  ],
+  "humidity_full_range_equivalent_max_c": 1.0,
+  "sources": {
+    "sensor_data.csv": "c9e2d7639dcb6f349fdfe0f041613c916b1c317358617fd53b2c4f2593a5ed89",
+    "sensor_data_test.csv": "a1957de165c75fd751430b2380671f4f8719312984c940543c7588152767c35d"
+  },
+  "objective": "class-balanced binary cross-entropy + 0.002*(a*a+c*c)",
+  "constraint": "a>=0.001; -0.05*a<=c<=0",
+  "id": "7129a5137abe"
+}

@@ -43,7 +43,7 @@ from dotenv import load_dotenv
 from paho.mqtt.enums import CallbackAPIVersion
 
 from database import SessionLocal
-from models import SensorHistory
+from models import SensorHistory, FireAlertHistory
 
 load_dotenv()
 log = logging.getLogger("adafruit_mqtt")
@@ -233,7 +233,7 @@ class AdafruitMQTTClient:
         self._file_lock = threading.Lock()     # latency CSV (always taken after _lock)
         self._pending = {}             # cmd_id -> (monotonic sent, sent_at, device, value, actor)
         self._handlers = {k: [] for k in ("ack", "event", "mode", "fan_state", "sensor")}
-        self._state = {"fan_state": None, "mode": None, "last_event": None, "updated_at": None}
+        self._state = {"fan_state": None, "mode": None, "last_event": None, "updated_at": None, "fire_alert": None}
         self.stats = {"commands": 0, "acks": 0, "ack_timeouts": 0, "throttled": 0,
                       "bad_messages": 0, "backlog_rows": 0}
         self._topics = {f"{username}/feeds/{key}": name for name, key in self.feeds.items() if key}
@@ -399,6 +399,24 @@ class AdafruitMQTTClient:
             return
         with self._lock:
             self._state["last_event"] = (kind, data)
+            if kind == "TINYML":
+                st = "UNKNOWN"
+                sc = None
+                try:
+                    parts = str(data).split(":")
+                    st = parts[0]
+                    if len(parts) > 1:
+                        sc = float(parts[1])
+                except Exception as ex:
+                    log.warning("error parsing TINYML data %r: %s", data, ex)
+                self._state["fire_alert"] = {
+                    "state": st,
+                    "score": sc,
+                    "is_alarm": (st == "ALERT"),
+                    "updated_at": _utcnow_naive().isoformat()
+                }
+        if kind == "TINYML":
+            self._save_fire_alert(st, sc)
         log.warning("⚠️ board event %s: %s", kind, data)
         self._emit("event", {"type": kind, "data": data})
 
@@ -427,6 +445,12 @@ class AdafruitMQTTClient:
         """Both values in one row (backlog entries are already aligned)."""
         self._save(SensorHistory(temperature=temperature, humidity=humidity,
                                  recorded_at=recorded_at or _utcnow_naive()))
+
+    def _save_fire_alert(self, state, score):
+        try:
+            self._save(FireAlertHistory(state=state, score=score, recorded_at=_utcnow_naive()))
+        except Exception:
+            log.exception("❌ could not save fire alert history")
 
     def _save(self, row):
         db = SessionLocal()

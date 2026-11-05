@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { deviceAPI, Device, sensorAPI, SensorCurrent, SensorPoint, User } from '../services/api'
+import { deviceAPI, Device, sensorAPI, SensorCurrent, SensorPoint, FireStatus, User } from '../services/api'
 import { loadThresholds } from '../components/ThresholdModal'
 
 interface ShellContext {
@@ -15,6 +15,7 @@ function formatTime(value: string | null) {
 export default function Dashboard() {
   const { user } = useOutletContext<ShellContext>()
   const [sensors, setSensors] = useState<SensorCurrent>({ temperature: null, humidity: null, timestamp: null })
+  const [fireStatus, setFireStatus] = useState<FireStatus>({ state: 'OK', score: null, is_alarm: false, updated_at: null })
   const [history, setHistory] = useState<SensorPoint[]>([])
   const [devices, setDevices] = useState<Device[]>([])
   const [error, setError] = useState('')
@@ -22,6 +23,7 @@ export default function Dashboard() {
 
   const load = () => {
     sensorAPI.getCurrent().then((response) => setSensors(response.data)).catch(() => setError('Không đọc được cảm biến'))
+    sensorAPI.getFireStatus().then((response) => setFireStatus(response.data)).catch(() => undefined)
     sensorAPI.getHistory(24).then((response) => setHistory(response.data.data.slice(-6).reverse())).catch(() => undefined)
     deviceAPI.getAll().then((response) => setDevices(response.data)).catch(() => undefined)
   }
@@ -41,7 +43,15 @@ export default function Dashboard() {
       <div className="lg:w-[42%] lg:pl-6">
         <h1 className="text-4xl font-semibold text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)] lg:text-5xl">Hey, {name}!</h1>
         <p className="mt-3 text-lg text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)] lg:text-xl">Ready to control your smart home?</p>
-        {(hot || humid) && (
+        {fireStatus.is_alarm && (
+          <div className="mt-4 max-w-xs rounded-2xl bg-red-600/95 px-4 py-3 text-sm font-semibold text-white shadow-lg animate-pulse border border-red-300">
+            🚨 CẢNH BÁO NGUY CƠ CHÁY (TinyML)!
+            <div className="mt-1 text-xs font-normal opacity-90">
+              Điểm rủi ro: {fireStatus.score !== null ? (fireStatus.score * 100).toFixed(1) + '%' : '--'} (Score: {fireStatus.score !== null ? fireStatus.score.toFixed(2) : '--'})
+            </div>
+          </div>
+        )}
+        {(hot || humid) && !fireStatus.is_alarm && (
           <p className="mt-4 max-w-xs rounded-2xl bg-yellow-300/90 px-4 py-2 text-sm font-medium text-black">
             {hot ? `Nhiệt độ đã chạm ngưỡng ${thresholds.maxTemp}°C. ` : ''}
             {humid ? `Độ ẩm đã chạm ngưỡng ${thresholds.maxHumidity}%.` : ''}
@@ -54,6 +64,12 @@ export default function Dashboard() {
           <h2 className="font-semibold">Tổng quan</h2>
           <p className="mt-3 text-sm">Nhiệt độ: {sensors.temperature ?? '--'}°C</p>
           <p className="text-sm">Độ ẩm: {sensors.humidity ?? '--'}%</p>
+          <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-2 text-xs">
+            <span className="text-white/70">Giám sát cháy TinyML:</span>
+            <span className={`font-semibold ${fireStatus.is_alarm ? 'text-red-400 font-bold animate-pulse' : 'text-emerald-400'}`}>
+              {fireStatus.is_alarm ? `CẢNH BÁO (${fireStatus.score !== null ? fireStatus.score.toFixed(2) : 'ALERT'})` : `An toàn (${fireStatus.score !== null ? fireStatus.score.toFixed(2) : 'OK'})`}
+            </span>
+          </div>
           <p className="mt-2 text-xs text-white/70">{sensors.timestamp ? `Cập nhật ${formatTime(sensors.timestamp)}` : 'Chưa có dữ liệu cảm biến'}</p>
           {error && <p className="mt-2 text-xs text-yellow-200">{error}</p>}
         </section>

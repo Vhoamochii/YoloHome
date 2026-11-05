@@ -11,6 +11,7 @@
 #include "config.h"
 #include "control_task.h"
 #include "i2c_bus.h"
+#include "tinyml_task.h"
 
 namespace {
 LiquidCrystal_I2C lcd(LCD_ADDR, 16, 2);
@@ -79,18 +80,22 @@ void refresh(const ControlStatus& s, uint32_t now) {
   if (isnan(s.humi)) snprintf(l1, sizeof l1, "%sC --%% F%3u", t, s.fan);
   else snprintf(l1, sizeof l1, "%sC %2.0f%% F%3u", t, double(s.humi), s.fan);
   temp(f, sizeof f, s.t15);
-  if (s.safety) snprintf(l2, sizeof l2, "SAFETY! %sC", t);
+  TinyMlStatus ml;
+  bool haveMl = tinyml_status(ml);
+  if (haveMl && ml.alarm && !isnan(ml.score)) {
+    snprintf(l2, sizeof l2, "FIRE! Score:%.2f", double(ml.score));
+  } else if (s.safety) snprintf(l2, sizeof l2, "SAFETY! %sC", t);
   else if (s.hot && s.mode != ctl::Mode::ManualLockdown) snprintf(l2, sizeof l2, "HOT! t15 %sC", f);
   else if (s.mode == ctl::Mode::ManualLockdown)
     snprintf(l2, sizeof l2, "LOCK %lum left", (unsigned long)((s.lockRemainingMs + 59999) / 60000));
   else if (s.mode == ctl::Mode::OfflineFailsafe) snprintf(l2, sizeof l2, "OFF  t15 %sC", f);
   else snprintf(l2, sizeof l2, "AUTO t15 %sC", f);
-  if (s.anomaly) { size_t k = strlen(l2); if (k < 15) { l2[k] = ' '; l2[k + 1] = '!'; l2[k + 2] = 0; } }
+  if (!(haveMl && ml.alarm) && s.anomaly) { size_t k = strlen(l2); if (k < 15) { l2[k] = ' '; l2[k + 1] = '!'; l2[k + 2] = 0; } }
   if (lcdOk) {
     writeLine(0, l1);
     writeLine(1, l2);
   }
-  uint32_t color = s.safety ? (((now / 250) % 2) ? 0xFF0000 : 0)
+  uint32_t color = (s.safety || (haveMl && ml.alarm)) ? (((now / 250) % 2) ? 0xFF0000 : 0)
                  : s.hot ? (((now / 500) % 2) ? 0xFF6000 : 0)       // heat warning: slow orange
                  : s.mode == ctl::Mode::ManualLockdown ? 0x0040FF
                  : s.mode == ctl::Mode::OfflineFailsafe ? 0xFF8000 : 0x00FF00;

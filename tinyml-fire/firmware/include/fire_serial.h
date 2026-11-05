@@ -10,7 +10,7 @@ inline void emit(const Result& r, float t, float h, uint32_t now, uint32_t seq,
   if (r.valid) {
     snprintf(ts, sizeof ts, "%.3f", double(t));
     snprintf(hs, sizeof hs, "%.3f", double(h));
-    snprintf(ps, sizeof ps, "%.8f", double(r.score));
+    snprintf(ps, sizeof ps, "%.8g", double(r.score));
   }
   Serial.printf("{\"type\":\"tinyml_fire\",\"v\":1,\"seq\":%lu,\"uptime_ms\":%lu,"
                 "\"temperature\":%s,\"humidity\":%s,\"score\":%s,"

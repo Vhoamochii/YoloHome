@@ -73,6 +73,13 @@ export interface SensorCurrent {
   timestamp: string | null
 }
 
+export interface FireStatus {
+  state: string
+  score: number | null
+  is_alarm: boolean
+  updated_at: string | null
+}
+
 export interface SensorPoint {
   id: number
   temperature: number | null
@@ -132,7 +139,9 @@ export const sensorAPI = {
   getCurrent: () => api.get<SensorCurrent>('/sensors/current'),
 
   getHistory: (hours: number = 24) =>
-    api.get<SensorHistory>(`/sensors/history?hours=${hours}`)
+    api.get<SensorHistory>(`/sensors/history?hours=${hours}`),
+
+  getFireStatus: () => api.get<FireStatus>('/sensors/fire-status')
 }
 
 export const scheduleAPI = {
