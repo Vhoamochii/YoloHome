@@ -5,19 +5,24 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 from database import get_db
 from models import SensorHistory, FireAlertHistory
+from timeutil import iso_utc, to_local, utcnow
 from adafruit_mqtt import mqtt_client
 
 router = APIRouter()
 
 
 @router.get("/current")
-async def get_current_sensors(db: Session = Depends(get_db)):
-    latest = db.query(SensorHistory).order_by(SensorHistory.recorded_at.desc()).first()
+def get_current_sensors(db: Session = Depends(get_db)):
+    # Older rows hold only one of the two values: take the newest of each.
+    newest = db.query(SensorHistory).order_by(SensorHistory.recorded_at.desc())
+    latest = newest.first()
     if latest:
+        temp = newest.filter(SensorHistory.temperature.isnot(None)).first()
+        humi = newest.filter(SensorHistory.humidity.isnot(None)).first()
         return {
-            "temperature": latest.temperature,
-            "humidity": latest.humidity,
-            "timestamp": latest.recorded_at.isoformat() if latest.recorded_at else datetime.utcnow().isoformat()
+            "temperature": temp.temperature if temp else None,
+            "humidity": humi.humidity if humi else None,
+            "timestamp": iso_utc(latest.recorded_at)
         }
     return {
         "temperature": None,
@@ -42,7 +47,7 @@ async def get_fire_status(db: Session = Depends(get_db)):
             "state": latest.state,
             "score": latest.score,
             "is_alarm": (latest.state == "ALERT"),
-            "updated_at": latest.recorded_at.isoformat() if latest.recorded_at else None
+            "updated_at": iso_utc(latest.recorded_at) if latest.recorded_at else None
         }
 
     return {
@@ -54,7 +59,7 @@ async def get_fire_status(db: Session = Depends(get_db)):
 
 
 @router.get("/history")
-async def get_sensor_history(
+def get_sensor_history(
     hours: int = Query(24, ge=1, le=720),
     db: Session = Depends(get_db)
 ):
@@ -71,20 +76,20 @@ async def get_sensor_history(
             "id": r.id,
             "temperature": r.temperature,
             "humidity": r.humidity,
-            "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None
+            "recorded_at": iso_utc(r.recorded_at)
         }
         for r in rows
     ]
 
     return {
         "data": data,
-        "from": since.isoformat(),
-        "to": datetime.utcnow().isoformat()
+        "from": iso_utc(since),
+        "to": iso_utc(utcnow())
     }
 
 
 @router.get("/export-csv")
-async def export_csv(
+def export_csv(
     hours: int = Query(168, ge=1, le=8760),
     db: Session = Depends(get_db)
 ):
@@ -108,7 +113,7 @@ async def export_csv(
     for r in rows:
         t_val = f"{r.temperature:.1f}" if r.temperature is not None else ""
         h_val = f"{r.humidity:.1f}" if r.humidity is not None else ""
-        time_str = r.recorded_at.strftime("%Y-%m-%d %H:%M:%S") if r.recorded_at else ""
+        time_str = to_local(r.recorded_at).strftime("%Y-%m-%d %H:%M:%S") if r.recorded_at else ""
         writer.writerow([r.id, time_str, t_val, h_val])
 
     csv_data = output.getvalue()

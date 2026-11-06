@@ -19,7 +19,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const url = error.config?.url || ''
-    const isAuthAttempt = url.includes('/auth/login') || url.includes('/auth/face-login') || url.includes('/auth/register')
+    const isAuthAttempt =
+      url.includes('/auth/login') ||
+      url.includes('/auth/face-login') ||
+      url.includes('/auth/register') ||
+      url.includes('/auth/register-face')
     if (error.response?.status === 401 && !isAuthAttempt) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
@@ -35,11 +39,13 @@ export interface User {
   id: number
   email: string
   name: string | null
+  has_face?: boolean
 }
 
 export interface AuthResponse {
   token: string
   user: User
+  distance?: number
 }
 
 export interface Device {
@@ -51,6 +57,9 @@ export interface Device {
   status: boolean
   speed: number
   color: string | null
+  is_alert?: boolean
+  alert_level?: 'SAFETY' | 'HOT' | 'TEST' | null
+  mode?: string
   updated_at: string | null
 }
 
@@ -60,9 +69,7 @@ export interface DeviceControlResult {
   action: string
   feed: string
   value: string
-  status: boolean
-  speed: number
-  color: string | null
+  cmd_id: string | null
   mqtt_sent: boolean
   message: string
 }
@@ -101,6 +108,19 @@ export interface Schedule {
   scheduled_time: string | null
   repeat_mode: string
   is_active: boolean
+  speed: number | null
+  created_at: string | null
+}
+
+export interface ActivityEntry {
+  id: number
+  cmd_id: string | null
+  device: string | null
+  action: string | null
+  actor: string | null
+  status: string | null
+  reason: string | null
+  rtt_ms: number | null
   created_at: string | null
 }
 
@@ -110,6 +130,7 @@ export interface ScheduleInput {
   scheduled_time: string
   repeat_mode: string
   is_active?: boolean
+  speed?: number | null
 }
 
 export const authAPI = {
@@ -124,14 +145,17 @@ export const authAPI = {
   faceLogin: (imageData: string) =>
     api.post<AuthResponse>('/auth/face-login', { image: imageData }),
 
-  registerFace: (imageData: string) =>
-    api.post('/auth/register-face', { image: imageData })
+  registerFace: (imageData: string, email?: string) =>
+    api.post<{ success: boolean; message: string; user_id: number }>('/auth/register-face', {
+      image: imageData,
+      email
+    })
 }
 
 export const deviceAPI = {
   getAll: () => api.get<Device[]>('/devices/'),
 
-  control: (deviceId: number, action: string, params?: { speed?: number; color?: string }) =>
+  control: (deviceId: number, action: string, params?: { speed?: number; actor?: 'USER' | 'VOICE' }) =>
     api.post<DeviceControlResult>(`/devices/${deviceId}/control`, { action, ...params })
 }
 
@@ -141,6 +165,7 @@ export const sensorAPI = {
   getHistory: (hours: number = 24) =>
     api.get<SensorHistory>(`/sensors/history?hours=${hours}`),
 
+  getExportCSVUrl: (hours: number = 168) => `/api/sensors/export-csv?hours=${hours}`,
   getFireStatus: () => api.get<FireStatus>('/sensors/fire-status')
 }
 
@@ -153,6 +178,37 @@ export const scheduleAPI = {
     api.patch<Schedule>(`/schedules/${id}`, body),
 
   remove: (id: number) => api.delete(`/schedules/${id}`)
+}
+
+export const activityAPI = {
+  list: (limit: number = 100) => api.get<ActivityEntry[]>(`/activity/?limit=${limit}`)
+}
+
+export const activityStatusLabel: Record<string, string> = {
+  PENDING: 'Đang chờ mạch',
+  OK: 'Mạch đã thực hiện',
+  REJECTED: 'Mạch từ chối',
+  TIMEOUT: 'Không có phản hồi',
+  OFFLINE: 'Chưa gửi (ngoại tuyến)',
+  EVENT: 'Sự kiện'
+}
+
+/**
+ * Wraps a polling fetch so a slow, older response can never overwrite a newer one.
+ * Responses arriving out of order are dropped.
+ */
+export function latestOnly<T>(fetcher: () => Promise<T>, apply: (value: T) => void) {
+  let lastStarted = 0
+  let lastApplied = 0
+  return () => {
+    const id = ++lastStarted
+    return fetcher().then((value) => {
+      if (id > lastApplied) {
+        lastApplied = id
+        apply(value)
+      }
+    })
+  }
 }
 
 export function saveSession(auth: AuthResponse) {

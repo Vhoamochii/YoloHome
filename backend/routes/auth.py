@@ -127,7 +127,7 @@ class RegisterFaceRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @router.post("/register")
-async def register(request: RegisterRequest, db: Session = Depends(get_db)):
+def register(request: RegisterRequest, db: Session = Depends(get_db)):
     email = request.email.strip().lower()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Email không hợp lệ.")
@@ -160,7 +160,7 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
+def login(request: LoginRequest, db: Session = Depends(get_db)):
     email = request.email.strip().lower()
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(request.password, user.password):
@@ -178,7 +178,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me")
-async def me(
+def me(
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ):
@@ -200,7 +200,7 @@ async def me(
 # ---------------------------------------------------------------------------
 
 @router.post("/register-face")
-async def register_face(
+def register_face(
     request: RegisterFaceRequest,
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
@@ -259,7 +259,7 @@ async def register_face(
 
 
 @router.post("/face-login")
-async def face_login(request: FaceLoginRequest, db: Session = Depends(get_db)):
+def face_login(request: FaceLoginRequest, db: Session = Depends(get_db)):
     """
     Recognizes face from camera capture, matches with profiles stored in database,
     and returns JWT token for authenticated user.

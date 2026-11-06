@@ -19,6 +19,7 @@ interface SpeechRecognizer {
   onerror: (() => void) | null
   onend: (() => void) | null
   start: () => void
+  abort: () => void
 }
 
 function getRecognizer(): SpeechRecognizer | null {
@@ -48,63 +49,56 @@ export default function VoiceModal({ devices, onDone, onClose }: VoiceModalProps
     }
 
     recognizer.lang = 'vi-VN'
-    recognizer.onresult = (event) => {
-      const text = event.results[0][0].transcript
-      setTranscript(text)
-      void runCommand(text)
+    recognizer.onresult = (event: SpeechEvent) => {
+      const phrase = event.results[0]?.[0]?.transcript || ''
+      setTranscript(phrase)
+      executeCommand(phrase)
     }
+
     recognizer.onerror = () => {
       setPhase('result')
-      setTranscript('Không nghe rõ. Thử lại.')
+      setDetail('Lỗi mic hoặc quyền truy cập bị chặn.')
     }
+
     recognizer.onend = () => {
-      setPhase((current) => (current === 'listening' ? 'result' : current))
+      setPhase((prev) => (prev === 'listening' ? 'result' : prev))
     }
 
-    const timer = window.setTimeout(() => {
-      try {
-        recognizer.start()
-        setPhase('listening')
-      } catch {
-        setPhase('result')
-        setTranscript('Không bật được micro')
-      }
-    }, 250)
+    setPhase('listening')
+    try {
+      recognizer.start()
+    } catch {
+      setPhase('result')
+      setDetail('Không khởi động được micro.')
+    }
+    return () => {
+      // Closing the dialog must not run a command that is still being recognised.
+      recognizer.onresult = null
+      recognizer.abort()
+    }
+  }, [])
 
-    return () => window.clearTimeout(timer)
-  }, [devices])
-
-  const runCommand = async (text: string) => {
-    const command = text.toLowerCase()
+  const executeCommand = async (phrase: string) => {
+    const command = phrase.toLowerCase()
     const fan = findDevice(devices, 'fan')
     const led = findDevice(devices, 'led')
+    const voice = { actor: 'VOICE' as const }
+    const sendTo = async (device: Device, action: string, done: string) => {
+      const { data } = await deviceAPI.control(device.id, action, voice)
+      setDetail(data.mqtt_sent ? done : data.message)
+    }
     try {
       if (command.includes('tắt quạt') && fan) {
-        await deviceAPI.control(fan.id, 'off')
-        setDetail('Đã tắt quạt')
+        await sendTo(fan, 'off', 'Đã gửi lệnh tắt quạt')
       } else if (command.includes('bật quạt') && fan) {
-        await deviceAPI.control(fan.id, 'on')
-        setDetail('Đã bật quạt')
-      } else if (command.includes('tắt đèn') && led) {
-        await deviceAPI.control(led.id, 'off')
-        setDetail('Đã tắt đèn')
-      } else if (command.includes('bật đèn') && led) {
-        await deviceAPI.control(led.id, 'on')
-        setDetail('Đã bật đèn')
-      } else if (led && command.includes('đỏ')) {
-        await deviceAPI.control(led.id, 'set_color', { color: 'FF0000' })
-        setDetail('Đã đổi đèn sang đỏ')
-      } else if (led && command.includes('xanh dương')) {
-        await deviceAPI.control(led.id, 'set_color', { color: '0000FF' })
-        setDetail('Đã đổi đèn sang xanh dương')
-      } else if (led && (command.includes('xanh lá') || command.includes('xanh'))) {
-        await deviceAPI.control(led.id, 'set_color', { color: '00FF00' })
-        setDetail('Đã đổi đèn sang xanh')
-      } else if (led && command.includes('vàng')) {
-        await deviceAPI.control(led.id, 'set_color', { color: 'FFFF00' })
-        setDetail('Đã đổi đèn sang vàng')
+        await sendTo(fan, 'on', 'Đã gửi lệnh bật quạt')
+      } else if (led && (command.includes('tắt cảnh báo') || command.includes('tắt báo động') || command.includes('an toàn') || command.includes('tắt đèn') || command.includes('xanh'))) {
+        // Must come before the "cảnh báo" test below: "tắt cảnh báo" contains those words.
+        await sendTo(led, 'safe', 'Đã gửi lệnh chuyển đèn về an toàn')
+      } else if (led && (command.includes('cảnh báo') || command.includes('báo động') || command.includes('đỏ') || command.includes('bật đèn'))) {
+        await sendTo(led, 'alert', 'Đã gửi lệnh bật đèn cảnh báo')
       } else {
-        setDetail('Chưa nhận ra lệnh. Thử "bật quạt" hoặc "tắt đèn".')
+        setDetail('Chưa nhận ra lệnh. Thử "bật quạt", "tắt quạt", hoặc "cảnh báo quá nhiệt".')
         setPhase('result')
         return
       }
@@ -118,28 +112,20 @@ export default function VoiceModal({ devices, onDone, onClose }: VoiceModalProps
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-6">
-      <div className="glass w-full max-w-lg rounded-[28px] p-8 text-center text-white">
-        <h2 className="text-2xl font-semibold">Điều khiển bằng giọng nói</h2>
-        <p className="mt-2 text-sm text-white/75">
-          {phase === 'ready' && 'Sẵn sàng'}
-          {phase === 'listening' && 'Đang nghe...'}
-          {phase === 'result' && 'Kết quả'}
-        </p>
-
-        <div className="mx-auto mt-8 flex h-24 w-24 items-center justify-center rounded-full bg-white/15">
-          {phase === 'result' && detail.startsWith('Đã') ? (
-            <span className="text-4xl text-yellow-300">✓</span>
-          ) : (
-            <svg viewBox="0 0 24 24" className="h-10 w-10 fill-white">
-              <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z" />
-            </svg>
-          )}
+      <div className="glass w-full max-w-sm rounded-[28px] p-6 text-center text-white">
+        <h2 className="text-xl font-semibold">Điều khiển bằng giọng nói</h2>
+        <div className="my-6 flex justify-center">
+          <div
+            className={`flex h-20 w-20 items-center justify-center rounded-full bg-white/20 text-3xl shadow-lg transition ${
+              phase === 'listening' ? 'animate-pulse ring-4 ring-yellow-400' : ''
+            }`}
+          >
+            🎤
+          </div>
         </div>
-
-        <p className="mt-6 text-lg font-medium">"{transcript}"</p>
-        {detail && <p className="mt-2 text-sm text-white/80">{detail}</p>}
-
-        <button onClick={onClose} className="mt-8 rounded-full bg-white px-6 py-2 text-sm font-semibold text-black">
+        <p className="text-base font-medium">{transcript}</p>
+        {detail && <p className="mt-2 text-xs text-white/70">{detail}</p>}
+        <button onClick={onClose} className="mt-6 rounded-full bg-white px-6 py-2 text-sm font-medium text-black">
           Đóng
         </button>
       </div>

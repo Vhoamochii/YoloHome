@@ -131,19 +131,21 @@
 // ---------------------------------------------------------------------------------------
 // Cloud link (adafruitio_task.cpp)
 // Free tier: 30 data points/min for the whole ACCOUNT, backend commands included.
-// A token bucket admits at most BURST + RATE messages in any 60 s window: 5 + 20 = 25,
-// leaving >= 5/min for the backend. Live telemetry needs 16/min.
-#define CLOUD_RATE_PER_MIN       20.0f
-#define CLOUD_RATE_BURST          5.0f
-#define CLOUD_TELEMETRY_RESERVE   1.0f   // telemetry leaves 1 token for ACKs/alerts
-#define CLOUD_REPLAY_RESERVE      3.0f   // backlog replay only when >= 4 tokens are free
-#define CLOUD_FAST_PERIOD_MS  10000      // temperature, humidity (mean of the window)
-#define CLOUD_SLOW_PERIOD_MS  30000      // light (mean), presence (any motion)
-#define CLOUD_SLOW_OFFSET_MS   5000      // stagger from the 10 s publishes
+// Optimized for maximum output responsiveness:
+// - Fast telemetry (temperature, humidity): every 30 s (4 publishes/min instead of 12)
+// - Slow telemetry (light, presence): every 60 s (2 publishes/min instead of 4)
+// Total telemetry = 6/min (reduced from 16/min), freeing 24 data points/min for commands & ACKs!
+#define CLOUD_RATE_PER_MIN       24.0f
+#define CLOUD_RATE_BURST         10.0f
+#define CLOUD_TELEMETRY_RESERVE   3.0f   // telemetry leaves 3 tokens for ACKs/alerts
+#define CLOUD_REPLAY_RESERVE      4.0f   // backlog replay only when >= 5 tokens are free
+#define CLOUD_FAST_PERIOD_MS  30000      // temperature, humidity (mean of the window)
+#define CLOUD_SLOW_PERIOD_MS  60000      // light (mean), presence (any motion)
+#define CLOUD_SLOW_OFFSET_MS  15000      // stagger from the 30 s publishes
 #define CLOUD_BACKLOG_MAX      1000      // minutes kept while offline (~16.7 h, 12 KB RAM)
 #define CLOUD_SYNC_WINDOW_MS   3000      // values arriving this soon after connect = restore
 #define CLOUD_WIFI_KICK_MS    30000
-#define CLOUD_READ_MS            50      // processPackets() wait
-#define CLOUD_LOOP_MS            50
+#define CLOUD_READ_MS            30      // processPackets() wait
+#define CLOUD_LOOP_MS            20
 
 #endif

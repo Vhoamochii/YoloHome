@@ -54,6 +54,7 @@ struct Command {
   char id[kIdLen + 1] = {0};       // "" when the sender gave none (Adafruit dashboard)
   Actor actor = Actor::User;
   uint16_t holdMin = 0;            // 0 = use the configured lockdown length
+  bool autoMode = false;           // Device::Fan value "AUTO": cancel lockdown/hold, keep speed
 };
 
 enum class ParseError : uint8_t { None, Empty, TooLong, BadValue, BadId };
@@ -61,7 +62,7 @@ const char* parseErrorName(ParseError e);
 
 // Parses a command payload. On BadValue, out.id and out.actor are still filled in so the
 // caller can send a rejecting ACK that references the command.
-// Semantics match aura_core.py: fan "ON"/"OFF"/0..100 (so "1" means 1 %, NOT on);
+// Semantics match aura_core.py: fan "ON"/"OFF"/"AUTO"/0..100 (so "1" means 1 %, NOT on);
 // led "ON"/"OFF"/"1"/"0"/"#RRGGBB" (also accepts bare "RRGGBB"); relay ON/OFF/1/0.
 // Actors other than U/V/S cannot be claimed remotely and become USER. isSync forces SYNC.
 ParseError parseCommand(Device dev, const char* payload, bool isSync, Command& out);

@@ -6,15 +6,20 @@ const emptyForm = {
   action: 'on',
   scheduled_time: '07:30',
   repeat_mode: 'daily',
-  is_active: true
+  is_active: true,
+  speed: 70
 }
 
 const actionLabel: Record<string, string> = {
   on: 'Bật',
   off: 'Tắt',
   set_speed: 'Đặt tốc độ',
-  set_color: 'Đổi màu'
+  alert: 'Bật đèn đỏ',
+  safe: 'Tắt đèn đỏ'
 }
+
+const actionsFor = (type: string | null | undefined) =>
+  type === 'led' ? ['alert', 'safe'] : ['on', 'off', 'set_speed']
 
 const repeatLabel: Record<string, string> = {
   once: 'Một lần',
@@ -55,7 +60,8 @@ export default function SchedulePage() {
       action: row.action,
       scheduled_time: (row.scheduled_time || '07:30:00').slice(0, 5),
       repeat_mode: row.repeat_mode,
-      is_active: row.is_active
+      is_active: row.is_active,
+      speed: row.speed ?? 70
     })
     setOpen(true)
   }
@@ -68,7 +74,8 @@ export default function SchedulePage() {
       action: form.action,
       scheduled_time: form.scheduled_time,
       repeat_mode: form.repeat_mode,
-      is_active: form.is_active
+      is_active: form.is_active,
+      speed: form.action === 'set_speed' ? form.speed : null
     }
     try {
       if (editing) {
@@ -125,7 +132,7 @@ export default function SchedulePage() {
                 <tr key={row.id} className="border-t border-white/10">
                   <td className="px-4 py-3">{row.device_name}</td>
                   <td className="px-4 py-3">{row.scheduled_time?.slice(0, 5)}</td>
-                  <td className="px-4 py-3">{actionLabel[row.action] || row.action}</td>
+                  <td className="px-4 py-3">{actionLabel[row.action] || row.action}{row.action === 'set_speed' && row.speed != null ? ` ${row.speed}%` : ''}</td>
                   <td className="px-4 py-3">{repeatLabel[row.repeat_mode] || row.repeat_mode}{row.is_active ? '' : ' · tạm dừng'}</td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => toggle(row)} className="mr-3 text-white/80">{row.is_active ? 'Tạm dừng' : 'Bật'}</button>
@@ -147,7 +154,11 @@ export default function SchedulePage() {
               Thiết bị
               <select
                 value={form.device_id}
-                onChange={(event) => setForm({ ...form, device_id: Number(event.target.value) })}
+                onChange={(event) => {
+                  const id = Number(event.target.value)
+                  const allowed = actionsFor(devices.find((device) => device.id === id)?.type)
+                  setForm({ ...form, device_id: id, action: allowed.includes(form.action) ? form.action : allowed[0] })
+                }}
                 className="mt-1 w-full rounded-lg border px-3 py-2"
               >
                 {devices.map((device) => (
@@ -172,11 +183,25 @@ export default function SchedulePage() {
                 onChange={(event) => setForm({ ...form, action: event.target.value })}
                 className="mt-1 w-full rounded-lg border px-3 py-2"
               >
-                {Object.entries(actionLabel).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
+                {actionsFor(devices.find((device) => device.id === form.device_id)?.type).map((value) => (
+                  <option key={value} value={value}>{actionLabel[value]}</option>
                 ))}
               </select>
             </label>
+            {form.action === 'set_speed' && (
+              <label className="mt-3 block text-sm">
+                Tốc độ (%)
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={form.speed}
+                  onChange={(event) => setForm({ ...form, speed: Number(event.target.value) })}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                  required
+                />
+              </label>
+            )}
             <label className="mt-3 block text-sm">
               Lặp lại
               <select

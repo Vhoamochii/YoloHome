@@ -2,7 +2,7 @@
 Adafruit IO MQTT connection manager for the backend.
 
 Talks to the board through Adafruit IO. The message formats (section 1 below) must match
-the firmware (adafruitio_task.h); both are tested against contract/cloud_vectors.txt.
+the firmware (adafruitio_task.h); both are tested against firmware/test/host/cloud_vectors.txt.
 
 What changed from the previous version, and why:
   * TLS on port 8883. Port 1883 sent the Adafruit key in plain text.
@@ -43,8 +43,9 @@ from dotenv import load_dotenv
 from paho.mqtt.enums import CallbackAPIVersion
 
 from database import SessionLocal
-from models import SensorHistory, FireAlertHistory
+from models import Device, DeviceStatus, SensorHistory, FireAlertHistory
 
+load_dotenv(Path(__file__).resolve().parent / ".env")
 load_dotenv()
 log = logging.getLogger("adafruit_mqtt")
 
@@ -91,6 +92,8 @@ def normalize_value(device: str, value) -> str:
         return "ON"
     if u in ("OFF", "FALSE"):
         return "OFF"
+    if device == "fan" and u == "AUTO":   # cancels lockdown on the board
+        return "AUTO"
     if device == "fan":
         try:
             f = float(s)
@@ -185,7 +188,7 @@ AIO_HOST = os.getenv("ADAFRUIT_IO_HOST", "io.adafruit.com")
 AIO_PORT = int(os.getenv("ADAFRUIT_IO_PORT", "8883"))
 AIO_TLS = os.getenv("ADAFRUIT_IO_TLS", "1") != "0"
 
-# Must match firmware/include/cloud_config.h. Exactly 10 feeds: the free-tier maximum.
+# Must match the FEED_* names in firmware/include/config.h. Exactly 10 feeds: the free-tier maximum.
 _DEFAULT_FEEDS = {
     "temperature": "yolohome-temperature",
     "humidity": "yolohome-humidity",
@@ -201,6 +204,7 @@ _DEFAULT_FEEDS = {
 FEEDS = {name: os.getenv(f"AIO_FEED_{name.upper()}", key) for name, key in _DEFAULT_FEEDS.items()}
 COMMAND_DEVICES = ("fan", "led")
 ACK_TIMEOUT_S = 30.0
+SENSOR_MERGE_WINDOW_S = 5.0   # temperature and humidity of one reading arrive as two messages
 LATENCY_LOG = Path(os.getenv("AIO_LATENCY_LOG", "data/command_latency.csv"))
 _LATENCY_HEADER = ["sent_at_utc", "cmd_id", "device", "value", "actor", "ok", "reason", "rtt_ms"]
 
@@ -232,8 +236,9 @@ class AdafruitMQTTClient:
         self._lock = threading.Lock()          # pending commands and state
         self._file_lock = threading.Lock()     # latency CSV (always taken after _lock)
         self._pending = {}             # cmd_id -> (monotonic sent, sent_at, device, value, actor)
-        self._handlers = {k: [] for k in ("ack", "event", "mode", "fan_state", "sensor")}
-        self._state = {"fan_state": None, "mode": None, "last_event": None, "updated_at": None, "fire_alert": None}
+        self._handlers = {k: [] for k in ("ack", "timeout", "event", "mode", "fan_state", "sensor")}
+        self._state = {"fan_state": None, "mode": None, "last_event": None, "updated_at": None,
+                       "hot": False, "safety": False, "fire_alert": None}
         self.stats = {"commands": 0, "acks": 0, "ack_timeouts": 0, "throttled": 0,
                       "bad_messages": 0, "backlog_rows": 0}
         self._topics = {f"{username}/feeds/{key}": name for name, key in self.feeds.items() if key}
@@ -247,26 +252,28 @@ class AdafruitMQTTClient:
         with self._lock:
             return dict(self._state)
 
-    def send_command(self, device, value, actor="USER", hold_min=None):
+    def send_command(self, device, value, actor="USER", hold_min=None, cmd_id=None):
         """Send a fan/LED command. Returns the command id, or None if not connected.
-        Raises CommandError (a ValueError) for an invalid device, value or actor."""
+        Raises CommandError (a ValueError) for an invalid device, value or actor.
+        Pass cmd_id when the caller must record the command BEFORE the ACK can arrive."""
         if device not in COMMAND_DEVICES or not self.feeds.get(device):
             raise CommandError(f"no command feed for {device!r} (free tier: 10 feeds)")
-        payload, cmd_id = build_command(device, value, actor, hold_min=hold_min)
+        payload, cmd_id = build_command(device, value, actor, cmd_id=cmd_id, hold_min=hold_min)
         if not self.connected:
             log.warning("not connected to Adafruit IO; %s command dropped", device)
             return None
         sent = (time.monotonic(), _utcnow_naive(), device, payload.split(":")[0], actor.upper())
         with self._lock:
-            self._expire_pending_locked()
+            expired = self._expire_pending_locked()
             self._pending[cmd_id] = sent
+        self._emit_timeouts(expired)
         info = self.client.publish(self._topic(device), payload, qos=1)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
             with self._lock:
                 self._pending.pop(cmd_id, None)
             log.error("publish failed (rc=%s)", info.rc)
             return None
-        self.stats["commands"] += 1
+        self._bump("commands")
         log.info("📤 %s = %s", device, payload)
         return cmd_id
 
@@ -307,25 +314,29 @@ class AdafruitMQTTClient:
     # ---- paho callbacks (network thread) ------------------------------------------------
     def on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code.is_failure:
-            log.error("❌ Adafruit IO refused the connection: %s", reason_code)
+            log.error(" Adafruit IO refused the connection: %s", reason_code)
             return
         self.connected = True
         subs = [t for t, name in self._topics.items() if name not in COMMAND_DEVICES]
         subs += [f"{self.username}/throttle", f"{self.username}/errors"]
         client.subscribe([(t, 1) for t in subs])
-        log.info("✅ Connected to Adafruit IO, subscribed to %d topics", len(subs))
+        for key in ("mode", "fan_state"):
+            feed = self.feeds.get(key)
+            if feed:
+                client.publish(f"{self.username}/feeds/{feed}/get", "")
+        log.info(" Connected to Adafruit IO, subscribed to %d topics", len(subs))
 
     def on_disconnect(self, client, userdata, flags, reason_code, properties):
         self.connected = False
         if reason_code.is_failure:
-            log.warning("⚠️ Lost Adafruit IO (%s); paho will reconnect", reason_code)
+            log.warning(" Lost Adafruit IO (%s); paho will reconnect", reason_code)
         else:
             log.info("Disconnected from Adafruit IO")
 
     def on_message(self, client, userdata, msg):
         payload = msg.payload.decode("utf-8", "replace").strip()
         if msg.topic.endswith("/throttle"):
-            self.stats["throttled"] += 1
+            self._bump("throttled")
             log.warning("Adafruit IO throttle: %s", payload)
             return
         if msg.topic.endswith("/errors"):
@@ -346,9 +357,11 @@ class AdafruitMQTTClient:
                 with self._lock:
                     self._state[name] = value
                     self._state["updated_at"] = _utcnow_naive()
+                if name == "fan_state":
+                    self.sync_fan_state_to_db(value)
                 self._emit(name, value)
         except ValueError as e:
-            self.stats["bad_messages"] += 1
+            self._bump("bad_messages")
             log.warning("ignored malformed %s message %r: %s", name, payload, e)
 
     # ---- internals ----------------------------------------------------------------------
@@ -365,11 +378,12 @@ class AdafruitMQTTClient:
     def _handle_ack(self, payload):
         ack = parse_ack(payload)
         with self._lock:
-            self._expire_pending_locked()
+            expired = self._expire_pending_locked()
             sent = self._pending.pop(ack.cmd_id, None) if ack.cmd_id else None
+        self._emit_timeouts(expired)
         rtt_ms = round((time.monotonic() - sent[0]) * 1000, 1) if sent else None
         sent_at = sent[1] if sent else None
-        self.stats["acks"] += 1
+        self._bump("acks")
         self._log_latency([sent_at.isoformat() if sent_at else "", ack.cmd_id or "", ack.device,
                            ack.value, ack.actor, int(ack.ok), ack.reason or "",
                            rtt_ms if rtt_ms is not None else ""])
@@ -377,7 +391,22 @@ class AdafruitMQTTClient:
                            "value": ack.value, "actor": ack.actor, "reason": ack.reason,
                            "rtt_ms": rtt_ms, "sent_at": sent_at})
 
+    def _bump(self, name):
+        with self._lock:               # routes, the scheduler and the network thread all count
+            self.stats[name] += 1
+
+    def expire_pending(self):
+        """Time out unanswered commands even when no other traffic triggers it."""
+        with self._lock:
+            expired = self._expire_pending_locked()
+        self._emit_timeouts(expired)
+
+    def _emit_timeouts(self, expired):
+        for cid in expired:            # outside the lock: handlers touch the database
+            self._emit("timeout", cid)
+
     def _expire_pending_locked(self):
+        expired = []
         now = time.monotonic()
         for cid, (t, sent_at, device, value, actor) in list(self._pending.items()):
             if now - t > ACK_TIMEOUT_S:
@@ -386,20 +415,40 @@ class AdafruitMQTTClient:
                 self._log_latency([sent_at.isoformat(), cid, device, value, actor, "",
                                    "NO_ACK", ""])
                 log.warning("no ACK for %s command %s after %.0f s", device, cid, ACK_TIMEOUT_S)
+                expired.append(cid)
+        return expired
 
     def _handle_event(self, payload):
         kind, data = parse_event(payload)
         if kind == "B":                # a minute buffered by the board while it was offline
             when = data.recorded_at.replace(tzinfo=None) if data.recorded_at else None
             self.save_sensor_row(data.temperature, data.humidity, when)
-            self.stats["backlog_rows"] += 1
+            self._bump("backlog_rows")
             self._emit("sensor", {"kind": "backlog", "light": data.light,
                                   "presence": data.presence, "recorded_at": when,
                                   "replayed": True})
             return
+        if kind == "BTN":
+            if data.startswith("FAN:"):
+                try:
+                    spd = int(data.split(":")[1])
+                    with self._lock:
+                        self._state["fan_state"] = spd
+                        self._state["updated_at"] = _utcnow_naive()
+                    self.sync_fan_state_to_db(spd)
+                except Exception:
+                    pass
+            elif data == "AUTO":
+                with self._lock:
+                    self._state["mode"] = "AUTO_AI"
+                    self._state["updated_at"] = _utcnow_naive()
         with self._lock:
             self._state["last_event"] = (kind, data)
-            if kind == "TINYML":
+            if kind in ("HOT", "HOT_CLEAR"):
+                self._state["hot"] = kind == "HOT"
+            elif kind in ("SAFETY", "SAFETY_CLEAR"):
+                self._state["safety"] = kind == "SAFETY"
+            elif kind == "TINYML":
                 st = "UNKNOWN"
                 sc = None
                 try:
@@ -435,16 +484,55 @@ class AdafruitMQTTClient:
 
     # ---- database (same table and conventions as before) ---------------------------------
     def save_sensor_data(self, kind, value):
-        """One live reading per row, as the previous version did."""
+        """Temperature and humidity arrive separately: put a pair in one row."""
         v = float(value)               # ValueError -> on_message logs and ignores it
-        self._save(SensorHistory(temperature=v if kind == "temperature" else None,
-                                 humidity=v if kind == "humidity" else None,
-                                 recorded_at=_utcnow_naive()))
+        now = _utcnow_naive()
+        db = SessionLocal()
+        try:
+            last = db.query(SensorHistory).order_by(SensorHistory.recorded_at.desc()).first()
+            if (last is not None and getattr(last, kind) is None and last.recorded_at
+                    and 0 <= (now - last.recorded_at).total_seconds() <= SENSOR_MERGE_WINDOW_S):
+                setattr(last, kind, v)
+            else:
+                db.add(SensorHistory(recorded_at=now, **{kind: v}))
+            db.commit()
+        except Exception:
+            db.rollback()
+            log.exception("❌ could not save sensor data")
+        finally:
+            db.close()
 
     def save_sensor_row(self, temperature, humidity, recorded_at=None):
         """Both values in one row (backlog entries are already aligned)."""
         self._save(SensorHistory(temperature=temperature, humidity=humidity,
                                  recorded_at=recorded_at or _utcnow_naive()))
+
+    def sync_fan_state_to_db(self, fan_speed: int):
+        """Persist updated fan speed and on/off status to database."""
+        db = SessionLocal()
+        try:
+            device = db.query(Device).filter(Device.type == "fan").first()
+            if device:
+                status_row = db.query(DeviceStatus).filter(DeviceStatus.device_id == device.id).first()
+                if not status_row:
+                    status_row = DeviceStatus(
+                        device_id=device.id,
+                        status=fan_speed > 0,
+                        speed=fan_speed,
+                        color=None
+                    )
+                    db.add(status_row)
+                else:
+                    status_row.speed = fan_speed
+                    status_row.status = fan_speed > 0
+                    status_row.updated_at = _utcnow_naive()
+                db.commit()
+                log.info("🔄 Synced fan speed %s%% (status=%s) to DB", fan_speed, fan_speed > 0)
+        except Exception:
+            db.rollback()
+            log.exception("❌ Could not sync fan state to database")
+        finally:
+            db.close()
 
     def _save_fire_alert(self, state, score):
         try:

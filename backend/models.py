@@ -65,4 +65,19 @@ class Schedule(Base):
     scheduled_time = Column(Time)
     repeat_mode = Column(String(50))
     is_active = Column(Boolean, default=True)
+    speed = Column(Integer)
+    last_run_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class ActivityLog(Base):
+    __tablename__ = "nhat_ky_hoat_dong"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cmd_id = Column(String(8), unique=True)
+    device = Column(String(50))
+    action = Column(String(100))
+    actor = Column(String(20))
+    status = Column(String(20))
+    reason = Column(String(50))
+    rtt_ms = Column(Float)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

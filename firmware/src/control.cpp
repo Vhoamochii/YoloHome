@@ -236,6 +236,11 @@ Controller::Result Controller::command(const cloud::Command& cmd, uint32_t nowMs
   bool system = cmd.actor == Actor::System;
   switch (cmd.device) {
     case cloud::Device::Fan: {
+      if (cmd.autoMode) {                                    // back to AI; speed untouched
+        holdActive_ = false;
+        cancelLockdown(nowMs);
+        return {true, nullptr};
+      }
       uint8_t v = cmd.fanPct;
       if (safety_ && !system && v < 100) return {false, "SAFE"};
       if (cmd.actor == Actor::Schedule || cmd.actor == Actor::Ai) {

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
-import { deviceAPI, Device, sensorAPI, SensorCurrent, SensorPoint, FireStatus, User } from '../services/api'
+import { deviceAPI, Device, FireStatus, latestOnly, sensorAPI, SensorCurrent, SensorPoint, User } from '../services/api'
 import { loadThresholds } from '../components/ThresholdModal'
 
 interface ShellContext {
@@ -21,18 +21,29 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const thresholds = loadThresholds()
 
-  const load = () => {
-    sensorAPI.getCurrent().then((response) => setSensors(response.data)).catch(() => setError('Không đọc được cảm biến'))
-    sensorAPI.getFireStatus().then((response) => setFireStatus(response.data)).catch(() => undefined)
-    sensorAPI.getHistory(24).then((response) => setHistory(response.data.data.slice(-6).reverse())).catch(() => undefined)
-    deviceAPI.getAll().then((response) => setDevices(response.data)).catch(() => undefined)
-  }
+  const load = useMemo(() => {
+    const current = latestOnly(sensorAPI.getCurrent, (response) => {
+      setSensors(response.data)
+      setError('')
+    })
+    const fire = latestOnly(sensorAPI.getFireStatus, (response) => {
+      setFireStatus(response.data)
+    })
+    const recent = latestOnly(() => sensorAPI.getHistory(24), (response) => setHistory(response.data.data.slice(-6).reverse()))
+    const list = latestOnly(deviceAPI.getAll, (response) => setDevices(response.data))
+    return () => {
+      current().catch(() => setError('Không đọc được cảm biến'))
+      fire().catch(() => undefined)
+      recent().catch(() => undefined)
+      list().catch(() => undefined)
+    }
+  }, [])
 
   useEffect(() => {
     load()
     const timer = window.setInterval(load, 5000)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [load])
 
   const name = user?.name || 'bạn'
   const hot = sensors.temperature !== null && sensors.temperature >= thresholds.maxTemp
@@ -61,9 +72,9 @@ export default function Dashboard() {
 
       <div className="glass w-full space-y-3 rounded-[28px] p-4 lg:ml-auto lg:w-[340px]">
         <section className="glass-card rounded-2xl p-4">
-          <h2 className="font-semibold">Tổng quan</h2>
-          <p className="mt-3 text-sm">Nhiệt độ: {sensors.temperature ?? '--'}°C</p>
-          <p className="text-sm">Độ ẩm: {sensors.humidity ?? '--'}%</p>
+          <h2 className="font-semibold">Tổng quan môi trường</h2>
+          <p className="mt-3 text-sm">Nhiệt độ: {sensors.temperature != null ? `${sensors.temperature}°C` : '--'}</p>
+          <p className="text-sm">Độ ẩm: {sensors.humidity != null ? `${sensors.humidity}%` : '--'}</p>
           <div className="mt-3 flex items-center justify-between border-t border-white/10 pt-2 text-xs">
             <span className="text-white/70">Giám sát cháy TinyML:</span>
             <span className={`font-semibold ${fireStatus.is_alarm ? 'text-red-400 font-bold animate-pulse' : 'text-emerald-400'}`}>
@@ -79,15 +90,26 @@ export default function Dashboard() {
           <ul className="mt-3 space-y-1 text-sm">
             {devices.length === 0 && <li>Chưa có thiết bị</li>}
             {devices.map((device) => (
-              <li key={device.id}>• {device.name}: {device.status ? 'bật' : 'tắt'}{device.type === 'fan' ? ` ${device.speed}%` : ''}</li>
+              <li key={device.id}>
+                • {device.name}:{' '}
+                {device.type === 'led'
+                  ? device.alert_level === 'SAFETY'
+                    ? '🔴 QUÁ NHIỆT (> 45°C)'
+                    : device.alert_level === 'HOT'
+                    ? '🟠 Cảnh báo nóng (≥ 33°C)'
+                    : device.alert_level === 'TEST'
+                    ? '🔴 Đang test đèn đỏ'
+                    : '🟢 Bình thường'
+                  : `${device.status ? 'bật' : 'tắt'}${device.type === 'fan' ? ` ${device.speed}%` : ''}`}
+              </li>
             ))}
           </ul>
         </section>
 
         <section className="glass-card rounded-2xl p-4">
-          <h2 className="font-semibold">Nhật ký</h2>
+          <h2 className="font-semibold">Nhật ký cảm biến gần đây</h2>
           <ul className="mt-3 space-y-1 text-sm">
-            {history.length === 0 && <li>Chưa có lịch sử</li>}
+            {history.length === 0 && <li className="text-xs text-white/60">Chưa có dữ liệu lịch sử từ ESP32</li>}
             {history.map((point) => (
               <li key={point.id}>{formatTime(point.recorded_at)} · {point.temperature ?? '--'}°C · {point.humidity ?? '--'}%</li>
             ))}

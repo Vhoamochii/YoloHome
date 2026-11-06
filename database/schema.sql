@@ -47,9 +47,24 @@ CREATE TABLE lich_su_cam_bien (
 CREATE TABLE lich_trinh (
     id SERIAL PRIMARY KEY,
     device_id INTEGER REFERENCES thiet_bi(id),
-    action VARCHAR(50), -- 'on', 'off'
+    action VARCHAR(50), -- 'on', 'off', 'set_speed', 'alert'
     scheduled_time TIME,
-    repeat_mode VARCHAR(50), -- 'daily', 'weekly'
+    repeat_mode VARCHAR(50), -- 'once', 'daily', 'weekly'
     is_active BOOLEAN DEFAULT true,
+    speed INTEGER,
+    last_run_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Activity log (commands and board events)
+CREATE TABLE nhat_ky_hoat_dong (
+    id SERIAL PRIMARY KEY,
+    cmd_id VARCHAR(8) UNIQUE,
+    device VARCHAR(50),
+    action VARCHAR(100),
+    actor VARCHAR(20),
+    status VARCHAR(20),
+    reason VARCHAR(50),
+    rtt_ms FLOAT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

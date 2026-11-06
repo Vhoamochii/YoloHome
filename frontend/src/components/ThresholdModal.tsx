@@ -5,18 +5,17 @@ import FaceCapture from './FaceCapture'
 export interface Thresholds {
   maxTemp: number
   maxHumidity: number
-  minLux: number
 }
 
 const STORAGE_KEY = 'yolohome-thresholds'
 
 export function loadThresholds(): Thresholds {
   const raw = localStorage.getItem(STORAGE_KEY)
-  if (!raw) return { maxTemp: 32, maxHumidity: 70, minLux: 60 }
+  if (!raw) return { maxTemp: 32, maxHumidity: 70 }
   try {
-    return { maxTemp: 32, maxHumidity: 70, minLux: 60, ...JSON.parse(raw) }
+    return { maxTemp: 32, maxHumidity: 70, ...JSON.parse(raw) }
   } catch {
-    return { maxTemp: 32, maxHumidity: 70, minLux: 60 }
+    return { maxTemp: 32, maxHumidity: 70 }
   }
 }
 
@@ -49,7 +48,7 @@ export default function ThresholdModal({ onClose }: ThresholdModalProps) {
             onChange={(event) => setValues({ ...values, maxTemp: Number(event.target.value) })}
             className="mt-1 w-full rounded-lg border px-3 py-2"
           />
-          <span className="mt-1 block text-xs text-neutral-500">Tự động bật quạt khi đạt nhiệt độ tối đa.</span>
+          <span className="mt-1 block text-xs text-neutral-500">Chỉ hiện cảnh báo trên trang Tổng quan của trình duyệt này; quạt do AI trên mạch điều khiển.</span>
         </label>
 
         <label className="mt-4 block text-sm">
@@ -61,17 +60,6 @@ export default function ThresholdModal({ onClose }: ThresholdModalProps) {
             className="mt-1 w-full rounded-lg border px-3 py-2"
           />
           <span className="mt-1 block text-xs text-neutral-500">Giới hạn tối đa của độ ẩm là 100%.</span>
-        </label>
-
-        <label className="mt-4 block text-sm">
-          Quang thông tối thiểu (lux)
-          <input
-            type="number"
-            value={values.minLux}
-            onChange={(event) => setValues({ ...values, minLux: Number(event.target.value) })}
-            className="mt-1 w-full rounded-lg border px-3 py-2"
-          />
-          <span className="mt-1 block text-xs text-neutral-500">Giới hạn tối đa của quang thông là 100 lux.</span>
         </label>
 
         {notice && <p className="mt-3 text-sm text-emerald-700">{notice}</p>}
