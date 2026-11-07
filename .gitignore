@@ -45,3 +45,6 @@ Thumbs.db
 
 # Secrets
 *secrets.h
+
+firmware/include/secrets.h
+backend/.env

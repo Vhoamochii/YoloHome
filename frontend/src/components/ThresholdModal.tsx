@@ -1,6 +1,4 @@
 import { FormEvent, useState } from 'react'
-import { authAPI, errorMessage } from '../services/api'
-import FaceCapture from './FaceCapture'
 
 export interface Thresholds {
   maxTemp: number
@@ -25,7 +23,6 @@ interface ThresholdModalProps {
 
 export default function ThresholdModal({ onClose }: ThresholdModalProps) {
   const [values, setValues] = useState<Thresholds>(loadThresholds)
-  const [faceOpen, setFaceOpen] = useState(false)
   const [notice, setNotice] = useState('')
 
   const save = (event: FormEvent) => {
@@ -64,14 +61,6 @@ export default function ThresholdModal({ onClose }: ThresholdModalProps) {
 
         {notice && <p className="mt-3 text-sm text-emerald-700">{notice}</p>}
 
-        <button
-          type="button"
-          onClick={() => setFaceOpen(true)}
-          className="mt-4 w-full rounded-lg border border-neutral-300 py-2 text-sm"
-        >
-          Đăng ký khuôn mặt
-        </button>
-
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm">
             Hủy
@@ -81,21 +70,7 @@ export default function ThresholdModal({ onClose }: ThresholdModalProps) {
           </button>
         </div>
       </form>
-
-      {faceOpen && (
-        <FaceCapture
-          title="Đăng ký khuôn mặt"
-          submitLabel="Lưu khuôn mặt"
-          onClose={() => setFaceOpen(false)}
-          onSubmit={async (image) => {
-            try {
-              await authAPI.registerFace(image)
-            } catch (error) {
-              throw new Error(errorMessage(error, 'Không lưu được khuôn mặt'))
-            }
-          }}
-        />
-      )}
     </div>
   )
 }
+

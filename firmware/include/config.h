@@ -111,15 +111,15 @@
 // Adafruit IO feed keys. Must match backend .env (AIO_FEED_*) — defaults are identical.
 // Keys use dashes: a '/' is not part of a feed key (the topic is <user>/feeds/<key>).
 // 10 feeds = the Adafruit IO free-tier maximum; adding one means dropping another.
-#define FEED_TEMPERATURE "yolohome-temperature"
-#define FEED_HUMIDITY    "yolohome-humidity"
-#define FEED_LIGHT       "yolohome-light"
-#define FEED_PRESENCE    "yolohome-presence"
-#define FEED_FAN         "yolohome-fan"        // command: backend/dashboard -> board
-#define FEED_LED         "yolohome-led"        // command
-#define FEED_ACK         "yolohome-ack"        // board -> backend
-#define FEED_EVENT       "yolohome-event"      // board -> backend (alerts + offline backlog)
-#define FEED_MODE        "yolohome-mode"       // AUTO_AI / MANUAL_LOCKDOWN until HH:MM / ...
+#define FEED_TEMPERATURE "temperature"
+#define FEED_HUMIDITY    "humidity"
+#define FEED_LIGHT       "light"
+#define FEED_PRESENCE    "presence"
+#define FEED_FAN         "fan"        // command: backend/dashboard -> board
+#define FEED_LED         "led"        // command
+#define FEED_ACK         "ack"        // board -> backend
+#define FEED_EVENT       "event"      // board -> backend (alerts + offline backlog)
+#define FEED_MODE        "mode"       // AUTO_AI / MANUAL_LOCKDOWN until HH:MM / ...
 #define FEED_FAN_STATE   "yolohome-fan-state"  // actual fan %, not the last command
 
 // ---------------------------------------------------------------------------------------
