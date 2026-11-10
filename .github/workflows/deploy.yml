@@ -17,7 +17,7 @@ jobs:
       - name: Install and build frontend
         working-directory: ./frontend
         run: |
-          npm ci
+          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
           npm run build
       - name: Upload frontend artifacts
         uses: actions/upload-artifact@v4
@@ -46,7 +46,7 @@ jobs:
           pip install platformio
       - name: Build firmware
         working-directory: ./firmware
-        run: pio run
+        run: pio run -e yolo_uno
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
