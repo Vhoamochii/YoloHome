@@ -93,4 +93,4 @@ jobs:
         run: bash firmware/test/host/run_tests.sh
       - name: Build firmware
         working-directory: ./firmware
-        run: pio run
+        run: pio run -e yolo_uno
