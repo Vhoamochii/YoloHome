@@ -236,22 +236,28 @@ Controller::Result Controller::command(const cloud::Command& cmd, uint32_t nowMs
   bool system = cmd.actor == Actor::System;
   switch (cmd.device) {
     case cloud::Device::Fan: {
-      if (cmd.autoMode) {                                    // back to AI; speed untouched
-        holdActive_ = false;
+      uint8_t v = cmd.fanPct;
+      if (v == 255) {
         cancelLockdown(nowMs);
         return {true, nullptr};
       }
-      uint8_t v = cmd.fanPct;
       if (safety_ && !system && v < 100) return {false, "SAFE"};
-      if (cmd.actor == Actor::Schedule || cmd.actor == Actor::Ai) {
-        if (lockdownActive(nowMs)) return {false, "LOCK"};
-        if (cmd.actor == Actor::Ai && holdActive_ && int32_t(holdUntil_ - nowMs) > 0)
-          return {false, "HOLD"};
+      if (cmd.actor == Actor::Schedule) {
         setFan(v);
-        if (cmd.actor == Actor::Schedule && cmd.holdMin) {   // pause the AI for hold_min
+        lockActive_ = false;                                 // schedule overrides manual lockdown
+        if (cmd.holdMin) {                                   // pause the AI for hold_min
           holdActive_ = true;
           holdUntil_ = nowMs + uint32_t(cmd.holdMin) * 60000UL;
         }
+        modeChanged_ = true;
+        refreshMode(nowMs);
+        return {true, nullptr};
+      }
+      if (cmd.actor == Actor::Ai) {
+        if (lockdownActive(nowMs)) return {false, "LOCK"};
+        if (holdActive_ && int32_t(holdUntil_ - nowMs) > 0)
+          return {false, "HOLD"};
+        setFan(v);
         return {true, nullptr};
       }
       setFan(v);

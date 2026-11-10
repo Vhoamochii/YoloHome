@@ -129,33 +129,32 @@ export default function ProtectedLayout() {
             {/* Face Registration Button */}
             <button
               onClick={() => setFaceModalOpen(true)}
-              className="nav-pill flex h-11 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium"
+              className="nav-pill flex h-11 items-center justify-center rounded-full px-3.5 text-xs font-semibold transition hover:scale-105 active:scale-95"
               title="Đăng ký hoặc cập nhật khuôn mặt Face ID"
             >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-              <span>{user?.has_face ? 'Face ID ✓' : '+ Face ID'}</span>
+              <span className={user?.has_face ? 'text-emerald-300' : 'text-yellow-300'}>
+                {user?.has_face ? 'Face ID ✓' : '+ Face ID'}
+              </span>
             </button>
 
             <button
               onClick={() => setSettingsOpen(true)}
-              className="nav-pill flex h-11 w-11 items-center justify-center rounded-full"
-              title="Cài đặt"
+              className="nav-pill flex h-11 w-11 items-center justify-center rounded-full transition hover:scale-105 active:scale-95"
+              title="Cài đặt ngưỡng"
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
                 <circle cx="12" cy="12" r="3" />
-                <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" />
               </svg>
             </button>
             <button
               onClick={() => setAlertsOpen((open) => !open)}
-              className="nav-pill flex h-11 w-11 items-center justify-center rounded-full"
+              className="nav-pill flex h-11 w-11 items-center justify-center rounded-full transition hover:scale-105 active:scale-95"
               title="Tài khoản"
             >
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-                <path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 19a2 2 0 0 0 4 0" />
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
               </svg>
             </button>
           </div>

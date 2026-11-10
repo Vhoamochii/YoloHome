@@ -168,9 +168,9 @@ ParseError parseCommand(Device dev, const char* payload, bool isSync, Command& o
 
   switch (dev) {
     case Device::Fan: {
+      if (eq(v, "AUTO")) { out.fanPct = 255; return ParseError::None; }
       if (eq(v, "ON") || eq(v, "TRUE")) { out.fanPct = 100; return ParseError::None; }
       if (eq(v, "OFF") || eq(v, "FALSE")) { out.fanPct = 0; return ParseError::None; }
-      if (eq(v, "AUTO")) { out.autoMode = true; return ParseError::None; }
       float f;
       if (!parseNumber(v, f)) return ParseError::BadValue;
       if (f < 0) f = 0;
@@ -199,7 +199,8 @@ size_t formatValue(const Command& c, char* buf, size_t n) {
   int w = 0;
   switch (c.device) {
     case Device::Fan:
-      w = c.autoMode ? snprintf(buf, n, "AUTO") : snprintf(buf, n, "%u", unsigned(c.fanPct));
+      if (c.fanPct == 255) w = snprintf(buf, n, "AUTO");
+      else w = snprintf(buf, n, "%u", unsigned(c.fanPct));
       break;
     case Device::Led: w = snprintf(buf, n, "%06lX", (unsigned long)(c.rgb & 0xFFFFFF)); break;
     case Device::Relay: w = snprintf(buf, n, "%u", c.relayOn ? 1u : 0u); break;

@@ -92,13 +92,28 @@ def _on_ack(ack: dict):
                               actor=ack["actor"])
             db.add(row)
         row.status, row.reason, row.rtt_ms = status, ack["reason"], ack["rtt_ms"]
-        if ack["ok"] and ack["device"] == "led":
-            device = db.query(Device).filter(Device.type == "led").first()
-            state = device and db.query(DeviceStatus).filter(DeviceStatus.device_id == device.id).first()
-            if state:
-                is_on = ack["value"].upper() != "000000"
-                state.status = is_on
-                state.color = ack["value"].upper() if is_on else "00FF00"
+        if ack["ok"]:
+            if ack["device"] == "led":
+                device = db.query(Device).filter(Device.type == "led").first()
+                state = device and db.query(DeviceStatus).filter(DeviceStatus.device_id == device.id).first()
+                if state:
+                    is_on = ack["value"].upper() != "000000"
+                    state.status = is_on
+                    state.color = ack["value"].upper() if is_on else "00FF00"
+            elif ack["device"] == "fan":
+                device = db.query(Device).filter(Device.type == "fan").first()
+                state = device and db.query(DeviceStatus).filter(DeviceStatus.device_id == device.id).first()
+                if state:
+                    try:
+                        val = int(ack["value"])
+                        state.speed = val
+                        state.status = val > 0
+                    except ValueError:
+                        if str(ack["value"]).upper() == "ON":
+                            state.status = True
+                        elif str(ack["value"]).upper() in ("OFF", "0"):
+                            state.status = False
+                            state.speed = 0
         db.commit()
 
         # If a scheduled fan command was refused because of a manual lockdown,
@@ -132,8 +147,25 @@ def _on_timeout(cmd_id: str):
 def _on_event(event: dict):
     db = SessionLocal()
     try:
-        action = f"{event['type']}:{event['data']}" if event["data"] else event["type"]
-        db.add(ActivityLog(device="board", action=action[:100], actor="BOARD", status="EVENT"))
+        device = "board"
+        e_type = event.get("type", "")
+        e_data = str(event.get("data", ""))
+        action = f"{e_type}:{e_data}" if e_data else e_type
+        if e_type == "BTN":
+            device = "fan"
+            if e_data.startswith("FAN:"):
+                spd = e_data.split(":")[1]
+                action = f"Nút cứng SW1: Chuyển quạt {spd}%"
+            elif e_data == "AUTO":
+                action = "Nút cứng SW2: Về chế độ Tự động (AUTO)"
+        elif e_type == "SAFETY":
+            device = "fan"
+            action = f"AN TOÀN: Nhiệt độ vượt ngưỡng ({e_data}°C) -> Quạt 100%"
+        elif e_type == "HOT":
+            device = "led"
+            action = "CẢNH BÁO QUÁ NHIỆT: Đèn LED Đỏ"
+
+        db.add(ActivityLog(device=device, action=action[:100], actor="BOARD", status="EVENT"))
         db.commit()
     finally:
         db.close()

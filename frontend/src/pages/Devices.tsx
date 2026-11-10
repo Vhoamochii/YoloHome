@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { activityAPI, ActivityEntry, activityStatusLabel, deviceAPI, Device, errorMessage, latestOnly } from '../services/api'
 
 // After a command the board needs a moment to report; keep showing what the user chose until then.
-const SPEED_HOLD_MS = 5000
+const SPEED_HOLD_MS = 1500
 
 function formatTime(value: string | null) {
   return value ? new Date(value).toLocaleTimeString('vi-VN') : '--'

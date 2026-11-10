@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { activityAPI, ActivityEntry, activityStatusLabel, latestOnly, sensorAPI, SensorPoint } from '../services/api'
+import { useEffect, useState } from 'react'
+import { activityAPI, ActivityEntry, activityStatusLabel, sensorAPI, SensorPoint } from '../services/api'
 
 function formatStamp(value: string | null) {
   if (!value) return '--'
@@ -11,46 +11,45 @@ function formatStamp(value: string | null) {
 
 export default function Logs() {
   const [rows, setRows] = useState<SensorPoint[]>([])
+  const [events, setEvents] = useState<ActivityEntry[]>([])
   const [hours, setHours] = useState(24)
   const [error, setError] = useState('')
   const [activeTab, setActiveTab] = useState<'sensors' | 'events'>('sensors')
-  const [events, setEvents] = useState<ActivityEntry[]>([])
 
-  useEffect(() => {
-    // Changing the range quickly must not let the slower, older request win.
-    let cancelled = false
+  const loadData = () => {
     sensorAPI
       .getHistory(hours)
-      .then((response) => {
-        if (!cancelled) setRows([...response.data.data].reverse())
-      })
-      .catch(() => {
-        if (!cancelled) setError('Không tải được dữ liệu nhật ký')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [hours])
+      .then((response) => setRows([...response.data.data].reverse()))
+      .catch(() => setError('Không tải được dữ liệu cảm biến'))
 
-  const loadEvents = useMemo(
-    () => latestOnly(() => activityAPI.list(200), (response) => setEvents(response.data)),
-    []
-  )
+    activityAPI
+      .list(100)
+      .then((response) => setEvents(response.data))
+      .catch(() => undefined)
+  }
 
   useEffect(() => {
-    loadEvents().catch(() => setError('Không tải được nhật ký hoạt động'))
-    const timer = window.setInterval(() => loadEvents().catch(() => undefined), 5000)
-    return () => window.clearInterval(timer)
-  }, [loadEvents])
+    loadData()
+    const timer = setInterval(loadData, 3000)
+    return () => clearInterval(timer)
+  }, [hours])
 
   const downloadCSV = () => {
     if (activeTab === 'sensors') {
-      // Use backend CSV export endpoint
       window.open(`/api/sensors/export-csv?hours=${hours}`, '_blank')
     } else {
-      // Client-side CSV export for Activity Events
-      const headers = ['ID', 'Thiết bị', 'Hành động', 'Nguồn phát (Actor)', 'Thời gian', 'Trạng thái', 'Lý do', 'RTT (ms)']
-      const csvRows = events.map((e) => [e.id, e.device, `"${e.action}"`, e.actor, `"${formatStamp(e.created_at)}"`, e.status, e.reason ?? '', e.rtt_ms ?? ''])
+      const headers = ['ID', 'Mã lệnh', 'Thiết bị', 'Hành động', 'Nguồn phát (Actor)', 'Thời gian', 'Trạng thái', 'Lý do', 'Độ trễ RTT (ms)']
+      const csvRows = events.map((e) => [
+        e.id,
+        `"${e.cmd_id || ''}"`,
+        `"${e.device || ''}"`,
+        `"${e.action || ''}"`,
+        `"${e.actor || ''}"`,
+        `"${formatStamp(e.created_at)}"`,
+        `"${activityStatusLabel[e.status || ''] || e.status || ''}"`,
+        `"${e.reason || ''}"`,
+        e.rtt_ms != null ? e.rtt_ms : ''
+      ])
       const csvContent = '\ufeff' + [headers.join(','), ...csvRows.map((r) => r.join(','))].join('\n')
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
@@ -71,7 +70,7 @@ export default function Logs() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Ghi nhận hoạt động & Nhật ký</h1>
             <p className="text-xs text-white/70">
-              Dữ liệu đồng bộ thời gian thực từ cảm biến và broker Adafruit IO
+              Dữ liệu đồng bộ thời gian thực từ cảm biến, lệnh điều khiển và bo mạch ESP32
             </p>
           </div>
 
@@ -80,9 +79,6 @@ export default function Logs() {
               onClick={downloadCSV}
               className="flex items-center gap-1.5 rounded-full bg-yellow-400 px-4 py-2 text-xs font-semibold text-black shadow-lg transition hover:bg-yellow-300 active:scale-95"
             >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
-              </svg>
               <span>Xuất file .CSV</span>
             </button>
           </div>
@@ -93,16 +89,16 @@ export default function Logs() {
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab('sensors')}
-              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
-                activeTab === 'sensors' ? 'bg-white text-black' : 'text-white/80 hover:bg-white/10'
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
+                activeTab === 'sensors' ? 'bg-white text-black shadow' : 'text-white/80 hover:bg-white/10'
               }`}
             >
               Cảm biến Adafruit ({rows.length})
             </button>
             <button
               onClick={() => setActiveTab('events')}
-              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
-                activeTab === 'events' ? 'bg-white text-black' : 'text-white/80 hover:bg-white/10'
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
+                activeTab === 'events' ? 'bg-white text-black shadow' : 'text-white/80 hover:bg-white/10'
               }`}
             >
               Nhật ký lệnh & Thiết bị ({events.length})
@@ -126,13 +122,13 @@ export default function Logs() {
           )}
         </div>
 
-        {error && <p className="mb-3 text-sm text-red-200">{error}</p>}
+        {error && <p className="mb-3 text-xs text-red-200 bg-red-950/40 p-2.5 rounded-xl">{error}</p>}
 
         {/* Sensor Table View */}
         {activeTab === 'sensors' && (
           <div className="max-h-[420px] overflow-y-auto rounded-2xl bg-white/10">
             <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-neutral-900/80 text-white/70 backdrop-blur-md">
+              <thead className="sticky top-0 bg-neutral-900/90 text-white/70 backdrop-blur-md">
                 <tr>
                   <th className="px-4 py-3 font-medium">#ID</th>
                   <th className="px-4 py-3 font-medium">Thời gian</th>
@@ -172,10 +168,10 @@ export default function Logs() {
         {activeTab === 'events' && (
           <div className="max-h-[420px] overflow-y-auto rounded-2xl bg-white/10">
             <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-neutral-900/80 text-white/70 backdrop-blur-md">
+              <thead className="sticky top-0 bg-neutral-900/90 text-white/70 backdrop-blur-md">
                 <tr>
                   <th className="px-4 py-3 font-medium">Thiết bị</th>
-                  <th className="px-4 py-3 font-medium">Hành động / Giá trị</th>
+                  <th className="px-4 py-3 font-medium">Hành động / Chi tiết</th>
                   <th className="px-4 py-3 font-medium">Nguồn ra lệnh</th>
                   <th className="px-4 py-3 font-medium">Thời gian</th>
                   <th className="px-4 py-3 font-medium">Trạng thái</th>
@@ -191,17 +187,33 @@ export default function Logs() {
                 ) : (
                   events.map((evt) => (
                     <tr key={evt.id} className="border-t border-white/5 transition hover:bg-white/5">
-                      <td className="px-4 py-3 font-medium">{evt.device}</td>
-                      <td className="px-4 py-3 text-white/90">{evt.action}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <span className="capitalize">{evt.device}</span>
+                      </td>
+                      <td className="px-4 py-3 text-white/90">
+                        {evt.action}
+                        {evt.rtt_ms != null && (
+                          <span className="ml-2 font-mono text-[11px] text-white/50">({evt.rtt_ms}ms)</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-mono text-yellow-300">
-                          {evt.actor}
+                          {evt.actor || 'USER'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-white/60">{formatStamp(evt.created_at)}</td>
+                      <td className="px-4 py-3 text-xs text-white/60 font-mono">{formatStamp(evt.created_at)}</td>
                       <td className="px-4 py-3">
-                        <span className={`rounded-md px-2 py-0.5 text-xs ${evt.status === 'OK' || evt.status === 'EVENT' ? 'bg-emerald-500/20 text-emerald-300' : evt.status === 'PENDING' ? 'bg-white/10 text-white/80' : 'bg-red-500/20 text-red-200'}`}>
-                          {activityStatusLabel[evt.status || ''] || evt.status}{evt.reason ? ` (${evt.reason})` : ''}
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-xs font-medium ${
+                            evt.status === 'OK' || evt.status === 'EVENT'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : evt.status === 'PENDING'
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                              : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                          }`}
+                        >
+                          {activityStatusLabel[evt.status || ''] || evt.status}
+                          {evt.reason ? ` (${evt.reason})` : ''}
                         </span>
                       </td>
                     </tr>
