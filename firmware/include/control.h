@@ -26,8 +26,8 @@ struct Config {
   float comfortC = 30.0f;          // pre-cool when the 15-min forecast approaches this
   float safetyC = 45.0f;
   float safetyReleaseC = 43.0f;
-  float warnC = 33.0f;               // heat warning: LEDs show warnColor from here ...
-  float warnReleaseC = 32.5f;        // ... until below this (the gap stops flickering)
+  float warnC = 33.8f;               // heat warning: LEDs show warnColor from here ...
+  float warnReleaseC = 33.5f;        // ... until below this (the gap stops flickering)
   uint32_t warnColor = 0xFF6000;     // orange
   uint16_t lockdownMin = 30;
   uint32_t presenceHoldS = 600;

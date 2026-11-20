@@ -83,7 +83,7 @@ void refresh(const ControlStatus& s, uint32_t now) {
   TinyMlStatus ml;
   bool haveMl = tinyml_status(ml);
   if (haveMl && ml.alarm && !isnan(ml.score)) {
-    snprintf(l2, sizeof l2, "FIRE! Score:%.2f", double(ml.score));
+    snprintf(l2, sizeof l2, "FIRE! S:%.2f", double(ml.score));
   } else if (s.safety) snprintf(l2, sizeof l2, "SAFETY! %sC", t);
   else if (s.hot && s.mode != ctl::Mode::ManualLockdown) snprintf(l2, sizeof l2, "HOT! t15 %sC", f);
   else if (s.mode == ctl::Mode::ManualLockdown)
@@ -91,9 +91,13 @@ void refresh(const ControlStatus& s, uint32_t now) {
   else if (s.mode == ctl::Mode::OfflineFailsafe) snprintf(l2, sizeof l2, "OFF  t15 %sC", f);
   else snprintf(l2, sizeof l2, "AUTO t15 %sC", f);
   if (!(haveMl && ml.alarm) && s.anomaly) { size_t k = strlen(l2); if (k < 15) { l2[k] = ' '; l2[k + 1] = '!'; l2[k + 2] = 0; } }
+  const char mode = s.mode == ctl::Mode::ManualLockdown ? 'M'
+                  : s.mode == ctl::Mode::OfflineFailsafe ? 'O' : 'A';
+  char line2[17];
+  snprintf(line2, sizeof line2, "%c %.14s", mode, l2);
   if (lcdOk) {
     writeLine(0, l1);
-    writeLine(1, l2);
+    writeLine(1, line2);
   }
   uint32_t color = (s.safety || (haveMl && ml.alarm)) ? (((now / 250) % 2) ? 0xFF0000 : 0)
                  : s.hot ? (((now / 500) % 2) ? 0xFF6000 : 0)       // heat warning: slow orange
