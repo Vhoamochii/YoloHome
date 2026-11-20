@@ -13,7 +13,6 @@ export default function Login() {
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
   const [faceLoginOpen, setFaceLoginOpen] = useState(false)
-  const [faceRegisterOpen, setFaceRegisterOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const submit = async (event: FormEvent) => {
@@ -27,7 +26,7 @@ export default function Login() {
           ? await authAPI.login(email, password)
           : await authAPI.register(email, password, name)
       saveSession(response.data)
-      navigate('/')
+      navigate('/', { state: { setupFace: mode === 'register' } })
     } catch (err) {
       setError(errorMessage(err, mode === 'login' ? 'Đăng nhập thất bại' : 'Không tạo được tài khoản'))
     } finally {
@@ -133,13 +132,9 @@ export default function Login() {
                 >
                   <span>👤</span> Đăng nhập bằng khuôn mặt
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setFaceRegisterOpen(true)}
-                  className="w-full text-center text-xs text-neutral-500 hover:text-black"
-                >
-                  📸 Đăng ký Face ID cho tài khoản hiện có
-                </button>
+                <p className="text-center text-xs text-neutral-500">
+                  Chưa có Face ID? Đăng nhập bằng mật khẩu rồi bấm "+ Face ID".
+                </p>
               </div>
             </>
           ) : (
@@ -169,35 +164,17 @@ export default function Login() {
         <FaceCapture
           title="Đăng nhập bằng khuôn mặt"
           submitLabel="Xác thực Face ID"
+          hint="Nhìn thẳng vào camera. Đeo khẩu trang cũng được."
+          frames={3}
+          intervalMs={300}
           onClose={() => setFaceLoginOpen(false)}
-          onSubmit={async (image) => {
+          onSubmit={async (images) => {
             try {
-              const response = await authAPI.faceLogin(image)
+              const response = await authAPI.faceLogin(images)
               saveSession(response.data)
               navigate('/')
             } catch (err) {
               throw new Error(errorMessage(err, 'Không nhận diện được khuôn mặt'))
-            }
-          }}
-        />
-      )}
-
-      {/* Face Register Modal */}
-      {faceRegisterOpen && (
-        <FaceCapture
-          title={`Đăng ký khuôn mặt cho ${email || 'tài khoản'}`}
-          submitLabel="Lưu khuôn mặt vào DB"
-          onClose={() => setFaceRegisterOpen(false)}
-          onSubmit={async (image) => {
-            if (!email) {
-              throw new Error('Vui lòng nhập email trước khi đăng ký khuôn mặt!')
-            }
-            try {
-              const res = await authAPI.registerFace(image, email)
-              setInfo(res.data.message || 'Đã lưu khuôn mặt thành công!')
-              setFaceRegisterOpen(false)
-            } catch (err) {
-              throw new Error(errorMessage(err, 'Không lưu được khuôn mặt'))
             }
           }}
         />

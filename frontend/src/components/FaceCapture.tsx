@@ -1,18 +1,42 @@
 import { useEffect, useRef, useState } from 'react'
 
+const MAX_WIDTH = 640 // enough for the server's face detector; keeps a frame around 50 KB
+
 interface FaceCaptureProps {
   title: string
   submitLabel: string
-  onSubmit: (image: string) => Promise<void>
+  hint?: string
+  frames?: number // frames taken per press, intervalMs apart
+  intervalMs?: number
+  onSubmit: (images: string[]) => Promise<string | void> // resolves with the success message
   onClose: () => void
 }
 
-type Phase = 'preview' | 'checking' | 'success' | 'failed'
+type Phase = 'preview' | 'capturing' | 'checking' | 'success' | 'failed'
 
-export default function FaceCapture({ title, submitLabel, onSubmit, onClose }: FaceCaptureProps) {
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function grab(video: HTMLVideoElement) {
+  const scale = Math.min(1, MAX_WIDTH / video.videoWidth)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(video.videoWidth * scale)
+  canvas.height = Math.round(video.videoHeight * scale)
+  canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
+  return canvas.toDataURL('image/jpeg', 0.85)
+}
+
+export default function FaceCapture({
+  title,
+  submitLabel,
+  hint = 'Đưa khuôn mặt vào khung hình',
+  frames = 3,
+  intervalMs = 300,
+  onSubmit,
+  onClose
+}: FaceCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [phase, setPhase] = useState<Phase>('preview')
-  const [message, setMessage] = useState('Đưa khuôn mặt vào khung hình')
+  const [message, setMessage] = useState(hint)
   const [cameraError, setCameraError] = useState('')
 
   useEffect(() => {
@@ -43,18 +67,19 @@ export default function FaceCapture({ title, submitLabel, onSubmit, onClose }: F
   const capture = async () => {
     const video = videoRef.current
     if (!video || !video.videoWidth) return
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    const context = canvas.getContext('2d')
-    if (!context) return
-    context.drawImage(video, 0, 0)
+    setPhase('capturing')
+    const images: string[] = []
+    for (let i = 0; i < frames; i++) {
+      if (i > 0) await sleep(intervalMs)
+      setMessage(frames > 1 ? `Đang chụp ${i + 1}/${frames}...` : 'Đang chụp...')
+      images.push(grab(video))
+    }
     setPhase('checking')
-    setMessage('Đang xác thực...')
+    setMessage('Đang xử lý...')
     try {
-      await onSubmit(canvas.toDataURL('image/jpeg', 0.8))
+      const result = await onSubmit(images)
       setPhase('success')
-      setMessage('Đã xác thực')
+      setMessage(result || 'Đã xác thực')
     } catch (error) {
       setPhase('failed')
       setMessage(error instanceof Error ? error.message : 'Không nhận diện được')
@@ -91,10 +116,10 @@ export default function FaceCapture({ title, submitLabel, onSubmit, onClose }: F
           </div>
           <button
             onClick={capture}
-            disabled={phase === 'checking' || Boolean(cameraError)}
-            className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-black disabled:opacity-50"
+            disabled={phase === 'capturing' || phase === 'checking' || Boolean(cameraError)}
+            className="shrink-0 rounded-full bg-white px-5 py-2 text-sm font-semibold text-black disabled:opacity-50"
           >
-            {phase === 'checking' ? 'Đang xử lý' : submitLabel}
+            {phase === 'capturing' || phase === 'checking' ? 'Đang xử lý' : submitLabel}
           </button>
         </div>
       </div>

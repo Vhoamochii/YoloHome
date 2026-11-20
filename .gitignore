@@ -51,3 +51,9 @@ Thumbs.db
 
 firmware/include/secrets.h
 backend/.env
+
+# Face ID: team face photos are personal data; large model files are downloaded
+ai-models/face/data/
+ai-models/face/out/*
+!ai-models/face/out/report.json
+backend/face_models/*.onnx

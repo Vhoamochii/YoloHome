@@ -13,11 +13,25 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class FaceProfile(Base):
+    """Old single dlib vector per user. No longer read: dlib vectors cannot be compared with SFace
+    ones, so users re-enroll into face_templates."""
     __tablename__ = "face_profiles"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("nguoi_dung.id"))
     face_encoding = Column(LargeBinary)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class FaceTemplate(Base):
+    """One enrolled face: the raw SFace vector (float32 x 128). The adapter is applied when comparing,
+    so retraining it never forces users to enroll again."""
+    __tablename__ = "face_templates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("nguoi_dung.id"), index=True, nullable=False)
+    kind = Column(String(20), nullable=False)          # plain | mask | synthetic_mask
+    model = Column(String(40), nullable=False)         # face_engine.MODEL_TAG
+    embedding = Column(LargeBinary, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Device(Base):

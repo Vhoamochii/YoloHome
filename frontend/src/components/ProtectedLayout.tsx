@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Navigate, Outlet, useNavigate } from 'react-router-dom'
-import { authAPI, deviceAPI, Device, readUser, User, errorMessage } from '../services/api'
-import FaceCapture from './FaceCapture'
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { authAPI, deviceAPI, Device, readUser, User } from '../services/api'
+import FaceSetup from './FaceSetup'
 import HomeScene from './HomeScene'
 import ThresholdModal from './ThresholdModal'
 import VoiceModal from './VoiceModal'
@@ -46,14 +46,17 @@ function Icon({ name }: { name: string }) {
 
 export default function ProtectedLayout() {
   const navigate = useNavigate()
+  const location = useLocation()
   const token = localStorage.getItem('token')
   const [user, setUser] = useState<User | null>(readUser)
   const [devices, setDevices] = useState<Device[]>([])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [alertsOpen, setAlertsOpen] = useState(false)
-  const [faceModalOpen, setFaceModalOpen] = useState(false)
-  const [toast, setToast] = useState('')
+  // A new account lands here with setupFace so Face ID setup opens right away (it can be skipped).
+  const [faceModalOpen, setFaceModalOpen] = useState(() =>
+    Boolean((location.state as { setupFace?: boolean } | null)?.setupFace)
+  )
 
   useEffect(() => {
     if (!token) return
@@ -80,21 +83,19 @@ export default function ProtectedLayout() {
     navigate('/login')
   }
 
-  const showToast = (msg: string) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 4000)
+  const refreshUser = () => {
+    authAPI
+      .me()
+      .then((response) => {
+        setUser(response.data)
+        localStorage.setItem('user', JSON.stringify(response.data))
+      })
+      .catch(() => undefined)
   }
 
   return (
     <div className="relative min-h-screen overflow-hidden text-white">
       <HomeScene className="fixed inset-0 z-0" />
-      
-      {/* Toast Alert */}
-      {toast && (
-        <div className="fixed top-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-emerald-500/90 px-5 py-2.5 text-sm font-medium text-white shadow-xl backdrop-blur-md">
-          {toast}
-        </div>
-      )}
 
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col gap-4 px-3 py-4 lg:flex-row lg:items-center lg:gap-6 lg:px-4 lg:py-8">
         <nav className="nav-pill flex flex-row items-center justify-center gap-2 self-center rounded-full px-3 py-2 lg:flex-col lg:px-2 lg:py-3">
@@ -174,7 +175,7 @@ export default function ProtectedLayout() {
                   }}
                   className="text-xs text-yellow-300 underline"
                 >
-                  Đăng ký Face ID
+                  {user?.has_face ? 'Quản lý Face ID' : 'Đăng ký Face ID'}
                 </button>
                 <button onClick={logout} className="ml-auto text-xs text-red-300 hover:text-red-200">
                   Đăng xuất
@@ -202,28 +203,7 @@ export default function ProtectedLayout() {
         />
       )}
 
-      {/* Face Registration Modal */}
-      {faceModalOpen && (
-        <FaceCapture
-          title="Đăng ký nhận diện khuôn mặt (Face ID)"
-          submitLabel="Lưu khuôn mặt vào hệ thống"
-          onClose={() => setFaceModalOpen(false)}
-          onSubmit={async (image) => {
-            try {
-              const res = await authAPI.registerFace(image)
-              showToast(res.data.message || 'Đăng ký khuôn mặt thành công!')
-              setFaceModalOpen(false)
-              // Update user state
-              authAPI.me().then((r) => {
-                setUser(r.data)
-                localStorage.setItem('user', JSON.stringify(r.data))
-              })
-            } catch (err) {
-              throw new Error(errorMessage(err, 'Lỗi khi lưu khuôn mặt.'))
-            }
-          }}
-        />
-      )}
+      {faceModalOpen && <FaceSetup onClose={() => setFaceModalOpen(false)} onChanged={refreshUser} />}
     </div>
   )
 }

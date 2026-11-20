@@ -3,24 +3,34 @@ import hashlib
 import hmac
 import os
 import secrets
+import threading
 import time
-from typing import Optional
+from collections import Counter
+from typing import List, Literal, Optional
 
 import cv2
 import numpy as np
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+import face_engine
 from database import get_db
-from models import FaceProfile, User
-try:
-    import face_recognition
-    HAS_FACE_RECOGNITION = True
-except Exception:
-    HAS_FACE_RECOGNITION = False
+from models import FaceTemplate, User
 
 router = APIRouter()
+
+FACE_KINDS = ("plain", "mask", "synthetic_mask")
+MAX_TEMPLATES_PER_KIND = 20            # the oldest template of a kind is dropped beyond this
+MAX_ENROLL_IMAGES = 12
+MAX_LOGIN_IMAGES = 5
+SYNTHETIC_PER_PLAIN = 2                # synthetic-mask templates generated from each plain face
+MAX_IMAGE_CHARS = 4_000_000            # base64 of a ~3 MB photo; the app sends 640 px frames (~50 KB)
+LOGIN_REJECTED = {
+    "no_match": "Khuôn mặt không khớp với tài khoản nào.",
+    "ambiguous": "Khuôn mặt giống nhiều tài khoản quá. Hãy tháo khẩu trang hoặc đăng nhập bằng mật khẩu.",
+}
 
 SECRET_KEY = os.getenv("SECRET_KEY", "yolohome-super-secret-key-2026")
 
@@ -82,6 +92,8 @@ def get_current_user(
 
 
 def decode_base64_image(image_data: str) -> np.ndarray:
+    if len(image_data) > MAX_IMAGE_CHARS:
+        raise HTTPException(status_code=413, detail="Ảnh quá lớn.")
     try:
         if "," in image_data:
             image_data = image_data.split(",", 1)[1]
@@ -113,13 +125,13 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class FaceEnrollRequest(BaseModel):
+    kind: Literal["plain", "mask"]
+    images: List[str]  # base64 JPEG frames
+
+
 class FaceLoginRequest(BaseModel):
-    image: str  # Base64 encoded image string
-
-
-class RegisterFaceRequest(BaseModel):
-    image: str
-    email: Optional[str] = None
+    images: List[str]  # 2-5 webcam frames, ~300 ms apart
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +198,9 @@ def me(
     if not user:
         raise HTTPException(status_code=401, detail="Chưa đăng nhập hoặc phiên đã hết hạn.")
 
-    has_face = db.query(FaceProfile).filter(FaceProfile.user_id == user.id).first() is not None
+    has_face = db.query(FaceTemplate.id).filter(
+        FaceTemplate.user_id == user.id, FaceTemplate.model == face_engine.MODEL_TAG
+    ).first() is not None
     return {
         "id": user.id,
         "email": user.email,
@@ -196,141 +210,140 @@ def me(
 
 
 # ---------------------------------------------------------------------------
-# Face Recognition Endpoints (Registration & Login)
+# Face ID: YuNet + SFace + trained adapter (face_engine.py, HUONG_FACE_ID.md)
 # ---------------------------------------------------------------------------
 
-@router.post("/register-face")
-def register_face(
-    request: RegisterFaceRequest,
+_engine = None
+_engine_lock = threading.Lock()
+
+
+def get_face_engine():
+    """Loads the ONNX models on first use, so the app starts (and tests run) without them."""
+    global _engine
+    with _engine_lock:
+        if _engine is None:
+            try:
+                _engine = face_engine.FaceEngine(face_engine.MODEL_DIR)
+            except FileNotFoundError:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Máy chủ chưa có model nhận diện khuôn mặt (chạy python download_face_models.py)."
+                )
+    return _engine
+
+
+def require_user(
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
-):
-    """
-    Extracts face embedding from base64 image and saves to face_profiles in database.
-    Can be called by an authenticated user OR by specifying user email.
-    """
-    if not HAS_FACE_RECOGNITION:
-        raise HTTPException(
-            status_code=500,
-            detail="Thư viện nhận diện khuôn mặt chưa sẵn sàng trên máy chủ."
-        )
-
-    # Resolve target user
+) -> User:
     user = get_current_user(authorization, db)
-    if not user and request.email:
-        email = request.email.strip().lower()
-        user = db.query(User).filter(User.email == email).first()
-
     if not user:
-        raise HTTPException(
-            status_code=401,
-            detail="Vui lòng đăng nhập hoặc cung cấp email tài khoản cần đăng ký khuôn mặt."
-        )
+        raise HTTPException(status_code=401, detail="Chưa đăng nhập hoặc phiên đã hết hạn.")
+    return user
 
-    # Decode and process image
-    img_bgr = decode_base64_image(request.image)
-    rgb_image = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
 
-    encodings = face_recognition.face_encodings(rgb_image)
-    if not encodings:
-        raise HTTPException(
-            status_code=400,
-            detail="Không tìm thấy khuôn mặt trong ảnh! Vui lòng nhìn thẳng vào camera ở nơi đủ ánh sáng."
-        )
+def face_counts(db: Session, user_id: int) -> dict:
+    rows = (db.query(FaceTemplate.kind, func.count(FaceTemplate.id))
+            .filter(FaceTemplate.user_id == user_id, FaceTemplate.model == face_engine.MODEL_TAG)
+            .group_by(FaceTemplate.kind).all())
+    counts = dict.fromkeys(FACE_KINDS, 0)
+    counts.update({kind: n for kind, n in rows})
+    return counts
 
-    # 128-dimensional float64 vector
-    face_encoding = encodings[0]
-    encoding_bytes = face_encoding.tobytes()
 
-    # Update or create FaceProfile in database
-    profile = db.query(FaceProfile).filter(FaceProfile.user_id == user.id).first()
-    if profile:
-        profile.face_encoding = encoding_bytes
-    else:
-        profile = FaceProfile(user_id=user.id, face_encoding=encoding_bytes)
-        db.add(profile)
+def enroll_faces(db: Session, user: User, kind: str, images: List[str], engine) -> dict:
+    """Store one template per usable image, plus synthetic-mask ones for plain faces, and keep the
+    newest MAX_TEMPLATES_PER_KIND of each kind. 400 when no image is usable."""
+    if not 1 <= len(images) <= MAX_ENROLL_IMAGES:
+        raise HTTPException(status_code=400, detail=f"Cần từ 1 đến {MAX_ENROLL_IMAGES} ảnh.")
+    rng = np.random.default_rng()
+    rejected, new = [], []
+    for index, data in enumerate(images):
+        probe = engine.probe(decode_base64_image(data), strict=True)
+        if probe.vector is None:
+            rejected.append({"index": index, "reason": probe.reason})
+            continue
+        new.append((kind, probe.vector))
+        if kind == "plain":
+            new += [("synthetic_mask", v)
+                    for v in engine.masked_vectors(probe.aligned, SYNTHETIC_PER_PLAIN, rng)]
+    if not new:
+        reason = Counter(r["reason"] for r in rejected).most_common(1)[0][0]
+        raise HTTPException(status_code=400, detail=f"Không ảnh nào dùng được: {reason}.")
 
+    db.add_all(FaceTemplate(user_id=user.id, kind=k, model=face_engine.MODEL_TAG,
+                            embedding=np.asarray(v, np.float32).tobytes()) for k, v in new)
+    db.flush()
+    for k in FACE_KINDS:
+        stale = (db.query(FaceTemplate)
+                 .filter(FaceTemplate.user_id == user.id, FaceTemplate.kind == k)
+                 .order_by(FaceTemplate.id.desc()).offset(MAX_TEMPLATES_PER_KIND).all())
+        for template in stale:
+            db.delete(template)
     db.commit()
-    return {
-        "success": True,
-        "message": f"Đã lưu khuôn mặt thành công cho tài khoản {user.email}!",
-        "user_id": user.id
-    }
+    return {"accepted": len(images) - len(rejected), "rejected": rejected, "counts": face_counts(db, user.id)}
+
+
+@router.post("/face/enroll")
+def face_enroll(
+    request: FaceEnrollRequest,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+    engine=Depends(get_face_engine)
+):
+    return enroll_faces(db, user, request.kind, request.images, engine)
+
+
+@router.get("/face/status")
+def face_status(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    counts = face_counts(db, user.id)
+    return {"has_face": any(counts.values()), "counts": counts}
+
+
+@router.delete("/face")
+def face_delete(user: User = Depends(require_user), db: Session = Depends(get_db)):
+    deleted = db.query(FaceTemplate).filter(FaceTemplate.user_id == user.id).delete()
+    db.commit()
+    return {"deleted": deleted}
 
 
 @router.post("/face-login")
-def face_login(request: FaceLoginRequest, db: Session = Depends(get_db)):
-    """
-    Recognizes face from camera capture, matches with profiles stored in database,
-    and returns JWT token for authenticated user.
-    """
-    if not HAS_FACE_RECOGNITION:
-        raise HTTPException(
-            status_code=500,
-            detail="Thư viện nhận diện khuôn mặt chưa sẵn sàng trên máy chủ."
-        )
-
-    # 1. Decode captured image
-    img_bgr = decode_base64_image(request.image)
-    rgb_image = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-
-    encodings = face_recognition.face_encodings(rgb_image)
-    if not encodings:
-        raise HTTPException(
-            status_code=400,
-            detail="Không phát hiện khuôn mặt trong khung hình. Vui lòng thử lại!"
-        )
-
-    probe_encoding = encodings[0]
-
-    # 2. Query all registered face profiles from database
-    profiles = db.query(FaceProfile).all()
-    if not profiles:
+def face_login(request: FaceLoginRequest, db: Session = Depends(get_db), engine=Depends(get_face_engine)):
+    """Match 2-5 webcam frames against every enrolled template; at least 2 must show one face."""
+    images = request.images
+    if not 2 <= len(images) <= MAX_LOGIN_IMAGES:
+        raise HTTPException(status_code=400, detail=f"Cần từ 2 đến {MAX_LOGIN_IMAGES} ảnh.")
+    rows = [t for t in db.query(FaceTemplate).filter(FaceTemplate.model == face_engine.MODEL_TAG).all()
+            if len(t.embedding) == face_engine.EMBED_DIM * 4]
+    if not rows:
         raise HTTPException(
             status_code=404,
-            detail="Chưa có khuôn mặt nào được đăng ký trong hệ thống. Vui lòng đăng nhập bằng mật khẩu trước để đăng ký khuôn mặt!"
+            detail="Chưa có khuôn mặt nào được đăng ký. Hãy đăng nhập bằng mật khẩu rồi thiết lập Face ID."
         )
 
-    known_encodings = []
-    user_ids = []
-    for p in profiles:
-        if p.face_encoding and len(p.face_encoding) == 128 * 8:
-            arr = np.frombuffer(p.face_encoding, dtype=np.float64)
-            known_encodings.append(arr)
-            user_ids.append(p.user_id)
+    probes = [engine.probe(decode_base64_image(data)) for data in images]
+    vectors = [p.vector for p in probes if p.vector is not None]
+    if len(vectors) < 2:
+        reason = next(p.reason for p in probes if p.vector is None)
+        raise HTTPException(status_code=400, detail=f"{reason}. Hãy nhìn thẳng vào camera và thử lại.")
 
-    if not known_encodings:
-        raise HTTPException(
-            status_code=404,
-            detail="Không có hồ sơ khuôn mặt hợp lệ trong hệ thống."
-        )
+    templates = np.stack([np.frombuffer(t.embedding, np.float32) for t in rows])
+    result = face_engine.match(
+        engine.adapt(np.stack(vectors)),
+        np.array([t.user_id for t in rows]),
+        np.array([t.kind for t in rows]),
+        engine.adapt(templates),
+        engine.thresholds,
+    )
+    if result["reason"]:
+        raise HTTPException(status_code=401, detail=LOGIN_REJECTED[result["reason"]])
 
-    # 3. Calculate Euclidean distance between probe face and database faces
-    distances = face_recognition.face_distance(known_encodings, probe_encoding)
-    best_match_index = int(np.argmin(distances))
-    best_distance = float(distances[best_match_index])
-
-    # Standard threshold for face_recognition (default is 0.6; 0.55 is strict & safe)
-    MATCH_THRESHOLD = 0.55
-
-    if best_distance > MATCH_THRESHOLD:
-        raise HTTPException(
-            status_code=401,
-            detail=f"Khuôn mặt không khớp với bất kỳ tài khoản nào (khoảng cách sai lệch: {best_distance:.2f})."
-        )
-
-    matched_user_id = user_ids[best_match_index]
-    user = db.query(User).filter(User.id == matched_user_id).first()
+    user = db.query(User).filter(User.id == result["user_id"]).first()
     if not user:
         raise HTTPException(status_code=404, detail="Không tìm thấy thông tin người dùng tương ứng.")
-
-    token = create_token(user.id)
     return {
-        "token": token,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name
-        },
-        "distance": best_distance
+        "token": create_token(user.id),
+        "user": {"id": user.id, "email": user.email, "name": user.name},
+        "score": round(result["score"], 3),
+        "matched_kind": result["kind"],
     }

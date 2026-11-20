@@ -1,0 +1,5 @@
+numpy
+opencv-python>=4.8      # FaceDetectorYN (YuNet 2023mar) + FaceRecognizerSF (SFace)
+torch                   # train_adapter.py; the CPU build is enough
+matplotlib              # evaluate.py: roc.png
+face-recognition        # evaluate.py E0 only (dlib baseline); optional, skip if it won't build

@@ -22,8 +22,7 @@ api.interceptors.response.use(
     const isAuthAttempt =
       url.includes('/auth/login') ||
       url.includes('/auth/face-login') ||
-      url.includes('/auth/register') ||
-      url.includes('/auth/register-face')
+      url.includes('/auth/register')
     if (error.response?.status === 401 && !isAuthAttempt) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
@@ -45,7 +44,20 @@ export interface User {
 export interface AuthResponse {
   token: string
   user: User
-  distance?: number
+  score?: number
+  matched_kind?: string
+}
+
+export interface FaceCounts {
+  plain: number
+  mask: number
+  synthetic_mask: number
+}
+
+export interface FaceEnrollResult {
+  accepted: number
+  rejected: { index: number; reason: string }[]
+  counts: FaceCounts
 }
 
 export interface Device {
@@ -142,14 +154,14 @@ export const authAPI = {
 
   me: () => api.get<User>('/auth/me'),
 
-  faceLogin: (imageData: string) =>
-    api.post<AuthResponse>('/auth/face-login', { image: imageData }),
+  faceLogin: (images: string[]) => api.post<AuthResponse>('/auth/face-login', { images }),
 
-  registerFace: (imageData: string, email?: string) =>
-    api.post<{ success: boolean; message: string; user_id: number }>('/auth/register-face', {
-      image: imageData,
-      email
-    })
+  faceEnroll: (kind: 'plain' | 'mask', images: string[]) =>
+    api.post<FaceEnrollResult>('/auth/face/enroll', { kind, images }),
+
+  faceStatus: () => api.get<{ has_face: boolean; counts: FaceCounts }>('/auth/face/status'),
+
+  faceDelete: () => api.delete<{ deleted: number }>('/auth/face')
 }
 
 export const deviceAPI = {
