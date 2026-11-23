@@ -13,6 +13,6 @@ Model mới: **logistic regression có ràng buộc**, suy luận trực tiếp 
 
 Hướng dẫn cập nhật, công thức, chỉnh ngưỡng và train lại: **[HUONG_DAN_CHAY_THUC_TE.md](HUONG_DAN_CHAY_THUC_TE.md)**.
 
-Kiểm tra: [docs/KIEM_THU.md](docs/KIEM_THU.md). Bản V2 đã kiểm tra C++ trên máy tính và protocol; chưa cross-compile/nạp phần cứng trong phiên cập nhật này.
+Bản V2 đã kiểm tra C++ trên máy tính và protocol; chưa cross-compile/nạp phần cứng trong phiên cập nhật này.
 
 Score là điểm phân loại thử nghiệm, không phải xác suất cháy được hiệu chuẩn. Dữ liệu gốc nhỏ và chưa đại diện môi trường thật; còn bỏ sót ngay trên dữ liệu fit. Không dùng thay đầu báo cháy đã kiểm định.

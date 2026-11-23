@@ -6,55 +6,40 @@
 #include "secrets.h"
 
 // ---------------------------------------------------------------------------------------
-// GPIO Pin Configuration — chosen by the chip being compiled for, so switching boards only
-// means switching the PlatformIO environment (see platformio.ini).
-// Port -> GPIO maps come from OhStem's board package: github.com/AITT-VN/ohstem_arduino_board
-// (variants/yolobit/ and variants/yolo_uno/pins_arduino.h). -1 = not present on this board.
+// GPIO Pin Configuration (Yolo Uno ESP32-S3 vs Yolo:Bit ESP32)
+// ---------------------------------------------------------------------------------------
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(BOARD_YOLO_UNO)
-// ===== Yolo Uno (ESP32-S3) =====
-//   I2C: A4 = SDA = 11, A5 = SCL = 12.  Analog-capable with WiFi on: A0-A3 = GPIO 1-4.
-//   With the yolo_uno.json board file the Arduino defaults are the M5Stack AtomS3's
-//   (SDA 38, SCL 39, LED_BUILTIN = an RGB LED): call Wire.begin(DHT_SDA, DHT_SCL) BEFORE
-//   any I2C library's begin(), and never use SDA/SCL/LED_BUILTIN/Dn/An by name.
-//   D3=6 D4=7 D5=8 D6=9 D7=10 D8=17 D9=18 D10=21 D11=38 D12=47 D13=48
 #define BOARD_NAME        "Yolo Uno"
-// I2C: the red Grove ports labelled I2C1 and I2C2 — one bus, two sockets. Plug the DHT20
-// into one and the LCD into the other; either way round works.
-#define DHT_SDA    11   // = A4
-#define DHT_SCL    12   // = A5
+#define DHT_SDA    11   // I2C: A4 = SDA 11, A5 = SCL 12
+#define DHT_SCL    12
 #define LCD_SDA    11
 #define LCD_SCL    12
-#define FAN_PIN    10   // D7  (port D7-D8)  — used by last year's working code
-#define LED_PIN    18   // D9  (port D9-D10) — used by last year's working code
-#define LIGHT_PIN   1   // A0  (port A0-A1)  — inferred, confirm on your board
-#define PIR_PIN    38   // D11 (port D11-D12) — inferred, confirm on your board
-#define RELAY_PIN   8   // D5  (port D5-D6)  — inferred, confirm on your board
-#define BUZZER_PIN -1   // the Yolo Uno has no buzzer
-#define ONBOARD_LED_PIN  48   // D13 / LED_BUILTIN
-#define ONBOARD_RGB_PIN  45   // single RGB LED (NeoPixel)
-#define SW1_PIN           6   // 2-button module on the D3-D4 Grove port: SW1 = yellow (D3)
-#define SW2_PIN           7   //                                         SW2 = white  (D4)
+#define FAN_PIN    10   // D7
+#define LED_PIN    18   // D9
+#define LIGHT_PIN   1   // A0
+#define PIR_PIN    38   // D11
+#define RELAY_PIN   8   // D5
+#define BUZZER_PIN -1
+#define ONBOARD_LED_PIN  48
+#define ONBOARD_RGB_PIN  45
+#define SW1_PIN           6   // D3
+#define SW2_PIN           7   // D4
 #else
-// ===== Yolo:Bit (ESP32) + expansion board =====
-//   Single-signal slots: P0=32  P1=33  P2=27 (analog via GPIO39)
-//   Two-signal slots (the FIRST signal is the one you drive):
-//                        P16/12=5/2  P14/15=19/23  P10/13=26/18  P3/6=13/12
-//   I2C1, I2C2:          P20=SDA=21  P19=SCL=22   (DHT20 and LCD must use these)
 #define BOARD_NAME        "Yolo:Bit"
-#define DHT_SDA    21   // I2C1 or I2C2
+#define DHT_SDA    21
 #define DHT_SCL    22
-#define LCD_SDA    21   // same I2C bus as the DHT20
+#define LCD_SDA    21
 #define LCD_SCL    22
-#define LED_PIN    32   // P0      4-LED RGB (book: P0)
-#define LIGHT_PIN  33   // P1      analog; only P0/P1/P2 can read analog sensors
-#define PIR_PIN    13   // P3/6    motion sensor (book: P3)
-#define FAN_PIN    26   // P10/13  mini fan, PWM (book: P0 or P10/13; never the I2C slots)
+#define LED_PIN    32   // P0
+#define LIGHT_PIN  33   // P1
+#define PIR_PIN    13   // P3/6
+#define FAN_PIN    26   // P10/13
 #define RELAY_PIN  19   // P14/15
-#define BUZZER_PIN 25   // on the Yolo:Bit itself, no slot needed
-#define ONBOARD_LED_PIN  -1   // no single LED
-#define ONBOARD_RGB_PIN   4   // the 5x5 RGB matrix; the demo lights only its first pixel
-#define SW1_PIN          35   // on-board button A
-#define SW2_PIN          14   // on-board button B
+#define BUZZER_PIN 25
+#define ONBOARD_LED_PIN  -1
+#define ONBOARD_RGB_PIN   4
+#define SW1_PIN          35
+#define SW2_PIN          14
 #endif
 
 // ---- Shared by both boards --------------------------------------------------------------
@@ -111,15 +96,15 @@
 // Adafruit IO feed keys. Must match backend .env (AIO_FEED_*) — defaults are identical.
 // Keys use dashes: a '/' is not part of a feed key (the topic is <user>/feeds/<key>).
 // 10 feeds = the Adafruit IO free-tier maximum; adding one means dropping another.
-#define FEED_TEMPERATURE "temperature"
-#define FEED_HUMIDITY    "humidity"
-#define FEED_LIGHT       "light"
-#define FEED_PRESENCE    "presence"
-#define FEED_FAN         "fan"        // command: backend/dashboard -> board
-#define FEED_LED         "led"        // command
-#define FEED_ACK         "ack"        // board -> backend
-#define FEED_EVENT       "event"      // board -> backend (alerts + offline backlog)
-#define FEED_MODE        "mode"       // AUTO_AI / MANUAL_LOCKDOWN until HH:MM / ...
+#define FEED_TEMPERATURE "yolohome-temperature"
+#define FEED_HUMIDITY    "yolohome-humidity"
+#define FEED_LIGHT       "yolohome-light"
+#define FEED_PRESENCE    "yolohome-presence"
+#define FEED_FAN         "yolohome-fan"        // command: backend/dashboard -> board
+#define FEED_LED         "yolohome-led"        // command
+#define FEED_ACK         "yolohome-ack"        // board -> backend
+#define FEED_EVENT       "yolohome-event"      // board -> backend (alerts + offline backlog)
+#define FEED_MODE        "yolohome-mode"       // AUTO_AI / MANUAL_LOCKDOWN until HH:MM / ...
 #define FEED_FAN_STATE   "yolohome-fan-state"  // actual fan %, not the last command
 
 // ---------------------------------------------------------------------------------------

@@ -43,6 +43,11 @@ Base = declarative_base()
 def upgrade_schema():
     """create_all() never alters an existing table: add columns newer than the local DB."""
     insp = inspect(engine)
+    if insp.has_table("nhat_ky_hoat_dong"):
+        existing = {c["name"] for c in insp.get_columns("nhat_ky_hoat_dong")}
+        if "user_id" not in existing:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE nhat_ky_hoat_dong ADD COLUMN user_id INTEGER"))
     if not insp.has_table("lich_trinh"):
         return
     existing = {c["name"] for c in insp.get_columns("lich_trinh")}

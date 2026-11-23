@@ -18,23 +18,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// =====================================================================================
-// Part 1 — message formats and helpers (namespace cloud). Used by the task; declared
-// here so the PC tests in test/host/ can exercise them directly.
-// =====================================================================================
-// WHY NOT JSON: the Adafruit IO Arduino library (v4.3.7) stores every feed value in a 45-byte
-// buffer filled with strcpy() and no bounds check (AIO_DATA_LENGTH in AdafruitIO_Definitions.h),
-// and it sends/receives values as CSV. A value of 45+ characters overflows memory on the board;
-// a comma splits the value. So every payload here is colon-separated, <= kMaxValue characters,
-// and never contains ',' or '"'. The backend (backend/adafruit_mqtt.py) enforces the same rules.
-//
-// Formats (same fields as the Python gateway's serial frames, minus the !…# wrapper):
-//   command  backend -> board   "<value>[:<id>[:<actor>[:<hold_min>]]]"   e.g. "70:a1b2c3d4:S"
-//            dashboard -> board "70", "ON", "#FF8800"   (no id, actor USER)
-//   ack      board -> backend   "<dev>:<id|->:<1|0>:<value>:<actor>[:<reason>]"
-//                                                          e.g. "fan:a1b2c3d4:1:70:S"
-//   event    board -> backend   "<TYPE>:<data>"                           e.g. "SAFETY:46.2"
-//   buffered board -> backend   "B:<epoch|0>:<temp>:<humi>:<light>:<presence>"
+// Part 1: Message formats and helpers (namespace cloud)
+// Colon-separated payloads <= kMaxValue (44 chars), no commas.
 namespace cloud {
 
 constexpr size_t kMaxValue = 44;   // 45-byte library buffer minus the terminating NUL
@@ -156,11 +141,7 @@ class RecentIds {
 
 }  // namespace cloud
 
-// =====================================================================================
-// Part 2 — the task and the API other FreeRTOS tasks use
-// =====================================================================================
-// Bit on your existing system event group. CHECK that it does not collide with the bits
-// already used in your firmware (EVT_WIFI_CONNECTED, EVT_AI_COOLING, ...) and change it if so.
+// Part 2: Task API
 #ifndef EVT_CLOUD_UP
 #define EVT_CLOUD_UP (1 << 8)
 #endif

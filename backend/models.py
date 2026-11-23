@@ -94,4 +94,5 @@ class ActivityLog(Base):
     status = Column(String(20))
     reason = Column(String(50))
     rtt_ms = Column(Float)
+    user_id = Column(Integer, ForeignKey("nguoi_dung.id"))   # who sent it from the app; NULL for board/schedule/AI
     created_at = Column(DateTime, default=datetime.utcnow, index=True)

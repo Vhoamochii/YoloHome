@@ -133,6 +133,7 @@ export interface ActivityEntry {
   status: string | null
   reason: string | null
   rtt_ms: number | null
+  user: string | null
   created_at: string | null
 }
 
@@ -177,7 +178,9 @@ export const sensorAPI = {
   getHistory: (hours: number = 24) =>
     api.get<SensorHistory>(`/sensors/history?hours=${hours}`),
 
-  getExportCSVUrl: (hours: number = 168) => `/api/sensors/export-csv?hours=${hours}`,
+  // Fetched through axios (not a plain link) so the login token is sent along.
+  exportCSV: (hours: number = 168) =>
+    api.get<Blob>('/sensors/export-csv', { params: { hours }, responseType: 'blob' }),
   getFireStatus: () => api.get<FireStatus>('/sensors/fire-status')
 }
 

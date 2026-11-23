@@ -56,7 +56,7 @@ def command_value(device: Device, action: str, speed: Optional[int], current_spe
 
 
 def dispatch(db: Session, device: Device, action: str, speed: Optional[int] = None,
-             actor: str = "USER", hold_min: Optional[int] = None) -> dict:
+             actor: str = "USER", hold_min: Optional[int] = None, user_id: Optional[int] = None) -> dict:
     status = db.query(DeviceStatus).filter(DeviceStatus.device_id == device.id).first()
     value = command_value(device, action, speed, status.speed if status else 0)
 
@@ -64,7 +64,7 @@ def dispatch(db: Session, device: Device, action: str, speed: Optional[int] = No
     # after the publish and must find the row.
     cmd_id = secrets.token_hex(4)
     row = ActivityLog(cmd_id=cmd_id, device=device.type, action=f"{action} ({value})", actor=actor,
-                      status="PENDING")
+                      status="PENDING", user_id=user_id)
     db.add(row)
     db.commit()
 
@@ -151,6 +151,13 @@ def _on_event(event: dict):
         e_type = event.get("type", "")
         e_data = str(event.get("data", ""))
         action = f"{e_type}:{e_data}" if e_data else e_type
+        if e_type == "TINYML":
+            # The board repeats its TinyML state every 60 s; every score is kept in lich_su_canh_bao_chay.
+            # Log only state changes (OK -> ALERT -> OK) so user commands are not buried under repeats.
+            last = (db.query(ActivityLog.action).filter(ActivityLog.action.like("TINYML:%"))
+                    .order_by(ActivityLog.id.desc()).first())
+            if last and last[0].split(":")[1:2] == e_data.split(":")[:1]:
+                return
         if e_type == "BTN":
             device = "fan"
             if e_data.startswith("FAN:"):

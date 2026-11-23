@@ -14,9 +14,9 @@ YoloHome: a smart-home student project. Components:
 
 The backend and the board never talk directly. Everything goes through **Adafruit IO MQTT feeds**.
 
-User-facing strings (API error messages, UI) and many docs (`BAO_CAO_HOAN_THANH.md`, `tinyml-fire/`) are in Vietnamese. Keep new user-facing text in Vietnamese.
+User-facing strings (API error messages, UI) and docs (`Guide.md`, `tinyml-fire/`, `LICH_SU_THAY_DOI.md`) are in Vietnamese. Keep new user-facing text in Vietnamese. `Guide.md` walks through the whole system end to end, and `LICH_SU_THAY_DOI.md` is the change history.
 
-`README.md` and `SETUP.md` are partly out of date. The code is the source of truth:
+The code and `Guide.md` are the source of truth:
 
 - There are 5 FreeRTOS tasks, not 7.
 - The database defaults to SQLite, not PostgreSQL.
@@ -26,7 +26,7 @@ User-facing strings (API error messages, UI) and many docs (`BAO_CAO_HOAN_THANH.
 
 ## Commands
 
-Backend (run from `backend/`; the repo-root `.venv` works):
+Backend (run from `backend/` with the repo-root `.venv`; on Windows a bare `python` can resolve to an interpreter without the packages, so use `..\.venv\Scripts\python.exe` or activate first):
 ```bash
 uvicorn main:app --reload                       # API on :8000, docs at /docs
 python -m pytest -q tests                       # full suite (what CI runs)
@@ -77,6 +77,10 @@ A command goes through these steps:
 4. Unanswered commands time out after 30 s. `scheduler.py` calls `expire_pending()` on every tick. A timeout only overwrites rows that are still `PENDING`.
 5. If the client is offline, the row becomes `OFFLINE`.
 
+Each ACK round-trip is appended to `data/command_latency.csv` (relative to the working directory; override with `AIO_LATENCY_LOG`). The CSV is the NFR-01 latency evidence and is tracked in git, so local runs show it as modified. Tests redirect it to a temp file.
+
+Board data arrives only over MQTT. `routes/webhook.py` (`/api/webhook/adafruit`) is an unused stub.
+
 Shared state (`_pending`, `_state`, `stats`) is guarded by `mqtt_client._lock`. Handlers are emitted outside the lock.
 
 `backend_gateway_test/` holds an **older, diverged copy** of `adafruit_mqtt.py` together with `live_test.py`. Edit `backend/adafruit_mqtt.py`, not that copy.
@@ -122,7 +126,7 @@ These copies have diverged from the `tinyml-fire/firmware/include/` versions; fo
 The board publishes `TINYML:<state>:<score>` events. The backend stores them in `FireAlertHistory` and serves them at `GET /api/sensors/fire-status`.
 
 ### AI scripts (`ai-models/`)
-`main.py`, `register-face.py` and `speech.py` are standalone OpenCV/`face_recognition` prototypes. Face login in the app is server-side: `frontend/src/components/FaceCapture.tsx` sends JPEG frames to `backend/routes/auth.py`. The route stores raw SFace vectors in `face_templates` (the old dlib `face_profiles` table is unused) and decides with `face_engine.match()`. Thresholds (plain 0.60, mask 0.65) live in `backend/face_models/thresholds.json`; they come from a leave-one-person-out test (`HUONG_FACE_ID.md` 4.4), and OpenCV's 0.363 let strangers in. Users enroll their bare face only; synthetic-mask templates let them log in masked. The engine loads lazily via the `get_face_engine` dependency and returns 503 if the ONNX files are missing. `face-api.js` is in `package.json` but unused.
+`main.py`, `register-face.py` and `speech.py` are standalone OpenCV/`face_recognition` prototypes. Face login in the app is server-side: `frontend/src/components/FaceCapture.tsx` sends JPEG frames to `backend/routes/auth.py`. The route stores raw SFace vectors in `face_templates` (the old dlib `face_profiles` table is unused) and decides with `face_engine.match()`. Thresholds (plain 0.60, mask 0.65, plus a 0.05 margin the best match must beat the runner-up by) live in `backend/face_models/thresholds.json`; they come from a leave-one-person-out test (`HUONG_FACE_ID.md` 4.4), and OpenCV's 0.363 let strangers in. Users enroll their bare face only; synthetic-mask templates let them log in masked. The engine loads lazily via the `get_face_engine` dependency and returns 503 if the ONNX files are missing. `face-api.js` is in `package.json` but unused.
 
 The masked-face Face ID work is planned in `HUONG_FACE_ID.md`. Its training pipeline lives in `ai-models/face/` (`collect` → `extract_features` → `train_adapter`). The team records once (session 1) as phone videos or photos under `data/raw/<person>/<condition>/`, imported with `collect.py --import`. `evaluate.py` needs a second session and is not part of the current plan.
 

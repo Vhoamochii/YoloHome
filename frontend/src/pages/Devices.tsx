@@ -104,8 +104,8 @@ export default function Devices() {
   }
 
   const exportActivityCSV = () => {
-    const headers = ['ID', 'Thiết bị', 'Hành động điều khiển', 'Thời gian', 'Trạng thái']
-    const csvRows = activityLogs.map((l) => [l.id, `"${l.device}"`, `"${l.action}"`, `"${formatTime(l.created_at)}"`, `"${l.status}"`])
+    const headers = ['ID', 'Thiết bị', 'Hành động điều khiển', 'Người thực hiện', 'Thời gian', 'Trạng thái']
+    const csvRows = activityLogs.map((l) => [l.id, `"${l.device}"`, `"${l.action}"`, `"${l.user || ''}"`, `"${formatTime(l.created_at)}"`, `"${l.status}"`])
     const csvContent = '\ufeff' + [headers.join(','), ...csvRows.map((r) => r.join(','))].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -344,6 +344,7 @@ export default function Devices() {
                 <div key={log.id} className="flex items-center justify-between py-0.5 text-white/80">
                   <span>
                     <span className="text-white/40">[{formatTime(log.created_at)}]</span> <span className="text-yellow-300">{log.device}</span>: {log.action}
+                    {log.user && <span className="text-white/50"> · {log.user}</span>}
                   </span>
                   <span className={`text-[11px] ${log.status === 'OK' || log.status === 'EVENT' ? 'text-emerald-400' : log.status === 'PENDING' ? 'text-white/60' : 'text-red-300'}`}>
                     {activityStatusLabel[log.status || ''] || log.status}{log.reason ? ` (${log.reason})` : ''}

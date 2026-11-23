@@ -1,10 +1,21 @@
 from datetime import datetime, time, timedelta
 from types import SimpleNamespace
 
+import pytest
+
 from adafruit_mqtt import build_command, mqtt_client
 from database import SessionLocal
 from models import Device, SensorHistory
 from scheduler import due_at, run_due
+
+
+@pytest.fixture()
+def client(client):
+    """Signed in: every route outside /api/auth needs a token."""
+    r = client.post("/api/auth/register",
+                    json={"email": "chunha@yolohome.vn", "password": "1234", "name": "Chủ nhà"})
+    client.headers["Authorization"] = f"Bearer {r.json()['token']}"
+    return client
 
 
 def device(client, kind):
@@ -17,6 +28,21 @@ def control(client, kind, **body):
 
 def activity(client):
     return client.get("/api/activity/").json()
+
+
+def test_routes_need_login(client, board):
+    fan_id = device(client, "fan")["id"]
+    anon = {"Authorization": ""}
+    for path in ("/api/devices/", "/api/sensors/current", "/api/sensors/export-csv",
+                 "/api/schedules/", "/api/activity/"):
+        assert client.get(path, headers=anon).status_code == 401, path
+    r = client.post(f"/api/devices/{fan_id}/control", json={"action": "on"}, headers=anon)
+    assert r.status_code == 401 and board == []
+
+
+def test_activity_shows_who_sent_the_command(client, board):
+    control(client, "fan", action="on")
+    assert activity(client)[0]["user"] == "Chủ nhà"
 
 
 def test_auto_sends_auto_and_does_not_fake_the_mode(client, board):
@@ -154,6 +180,13 @@ def test_schedule_during_lockdown_sends_auto_and_schedule(client, board):
     assert board[0][1].startswith("AUTO:")
     assert board[1][1].startswith("60:")
     assert board[1][1].split(":")[2] == "S"
+
+
+def test_tinyml_repeats_are_logged_once_per_state(client):
+    for data in ("OK:0.19", "OK:0.20", "ALERT:0.95", "ALERT:0.96", "OK:0.30"):
+        mqtt_client._handle_event(f"TINYML:{data}")
+    logged = [a["action"] for a in activity(client) if a["action"].startswith("TINYML:")]
+    assert logged == ["TINYML:OK:0.30", "TINYML:ALERT:0.95", "TINYML:OK:0.19"]
 
 
 def test_fire_status_endpoint_and_tinyml_event(client):

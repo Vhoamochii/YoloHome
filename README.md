@@ -216,7 +216,7 @@ YoloHome/
 
 ## Getting Started
 
-See `SETUP.md` for detailed installation and configuration instructions.
+See `Guide.md` for detailed system guide and logic overview.
 
 **Quick Start:**
 ```bash

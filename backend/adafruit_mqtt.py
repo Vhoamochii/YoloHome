@@ -49,19 +49,8 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 load_dotenv()
 log = logging.getLogger("adafruit_mqtt")
 
-# =====================================================================================
-# 1. Message formats (mirror of the firmware, firmware/include/adafruitio_task.h)
-#
-# Why not JSON: the board uses the Adafruit IO Arduino library, which copies every feed value
-# into a 45-byte buffer with strcpy() (no bounds check) and parses values as CSV. A value of
-# 45+ characters corrupts memory on the board; a comma splits it. So every value on a feed the
-# board subscribes to must be <= 44 characters with no ',' or '"'. build_command() enforces it.
-#
-#     command  backend -> board   "<value>:<id>:<actor>[:<hold_min>]"      "70:a1b2c3d4:S"
-#     ack      board -> backend   "<dev>:<id|->:<1|0>:<value>:<actor>[:<reason>]"
-#     event    board -> backend   "<TYPE>:<data>"                          "SAFETY:46.2"
-#     backlog  board -> backend   "B:<epoch|0>:<temp>:<humi>:<light>:<presence>"
-# =====================================================================================
+# Message formats (mirror of firmware/include/adafruitio_task.h)
+# Max 44 chars without commas, colon-separated payloads.
 MAX_VALUE = 44
 ACTOR_CODES = {"USER": "U", "VOICE": "V", "SCHEDULE": "S", "SYNC": "Y", "AI": "A", "SYSTEM": "X"}
 CODE_ACTORS = {v: k for k, v in ACTOR_CODES.items()}
@@ -178,9 +167,7 @@ def parse_event(text: str) -> tuple:
     return "B", Backlog(when, float(p[1]), float(p[2]), int(p[3]), p[4] == "1")
 
 
-# =====================================================================================
-# 2. The client
-# =====================================================================================
+# ---- Adafruit IO MQTT Client --------------------------------------------------------
 
 AIO_USERNAME = os.getenv("ADAFRUIT_IO_USERNAME", "")
 AIO_KEY = os.getenv("ADAFRUIT_IO_KEY", "")

@@ -20,9 +20,6 @@
 
 #include "config.h"    // feeds, tuning; includes secrets.h (credentials, gitignored)
 
-// =====================================================================================
-// Part 1 — message formats and helpers (formats and rationale: see adafruitio_task.h)
-// =====================================================================================
 namespace cloud {
 namespace {
 
@@ -339,21 +336,13 @@ bool RecentIds::seenOrAdd(const char* id) {
 
 }  // namespace cloud
 
-// =====================================================================================
-// Part 2 — the task
-// =====================================================================================
 using namespace cloud;
 
 QueueHandle_t qCloudCommands = nullptr;
 
 namespace {
 
-// AdafruitIO::run() is unsafe in a FreeRTOS task: when WiFi is down it blocks up to 60 s, and
-// when WiFi is up but Adafruit IO is unreachable it busy-spins
-//     while (mqttStatus(fail_fast) != AIO_CONNECTED && millis() - start < 60000) {}
-// because mqttStatus() returns immediately between its once-per-60-s reconnect attempts.
-// That starves other tasks on this core and can trip the task watchdog. So we never call
-// run(); service() does the same work (connect, read packets, keep-alive) without blocking.
+// Non-blocking wrapper around AdafruitIO_WiFi avoiding busy-spin in FreeRTOS.
 class YoloHomeIO : public AdafruitIO_WiFi {
  public:
   YoloHomeIO(const char* user, const char* key, const char* ssid, const char* pass)

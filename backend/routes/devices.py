@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from adafruit_mqtt import CommandError, mqtt_client
 from database import get_db
 from device_control import ALERT_COLOR, dispatch
-from models import Device, DeviceStatus
+from models import Device, DeviceStatus, User
+from routes.auth import require_user
 from timeutil import iso_utc
 
 router = APIRouter()
@@ -58,7 +59,8 @@ def get_devices(db: Session = Depends(get_db)):
 
 
 @router.post("/{device_id}/control")
-def control_device(device_id: int, request: DeviceControlRequest, db: Session = Depends(get_db)):
+def control_device(device_id: int, request: DeviceControlRequest, db: Session = Depends(get_db),
+                   user: User = Depends(require_user)):
     device = db.query(Device).filter(Device.id == device_id).first()
     if not device:
         raise HTTPException(status_code=404, detail="Không tìm thấy thiết bị")
@@ -66,7 +68,7 @@ def control_device(device_id: int, request: DeviceControlRequest, db: Session = 
     if actor not in ("USER", "VOICE"):
         actor = "USER"
     try:
-        result = dispatch(db, device, request.action, request.speed, actor=actor)
+        result = dispatch(db, device, request.action, request.speed, actor=actor, user_id=user.id)
     except CommandError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

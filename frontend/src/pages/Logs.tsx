@@ -36,15 +36,28 @@ export default function Logs() {
 
   const downloadCSV = () => {
     if (activeTab === 'sensors') {
-      window.open(`/api/sensors/export-csv?hours=${hours}`, '_blank')
+      sensorAPI
+        .exportCSV(hours)
+        .then((response) => {
+          const url = URL.createObjectURL(response.data)
+          const link = document.createElement('a')
+          link.href = url
+          link.setAttribute('download', `yolohome_sensor_history_${new Date().toISOString().slice(0, 10)}.csv`)
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+          URL.revokeObjectURL(url)
+        })
+        .catch(() => setError('Không xuất được file CSV cảm biến'))
     } else {
-      const headers = ['ID', 'Mã lệnh', 'Thiết bị', 'Hành động', 'Nguồn phát (Actor)', 'Thời gian', 'Trạng thái', 'Lý do', 'Độ trễ RTT (ms)']
+      const headers = ['ID', 'Mã lệnh', 'Thiết bị', 'Hành động', 'Nguồn phát (Actor)', 'Người thực hiện', 'Thời gian', 'Trạng thái', 'Lý do', 'Độ trễ RTT (ms)']
       const csvRows = events.map((e) => [
         e.id,
         `"${e.cmd_id || ''}"`,
         `"${e.device || ''}"`,
         `"${e.action || ''}"`,
         `"${e.actor || ''}"`,
+        `"${e.user || ''}"`,
         `"${formatStamp(e.created_at)}"`,
         `"${activityStatusLabel[e.status || ''] || e.status || ''}"`,
         `"${e.reason || ''}"`,
@@ -173,6 +186,7 @@ export default function Logs() {
                   <th className="px-4 py-3 font-medium">Thiết bị</th>
                   <th className="px-4 py-3 font-medium">Hành động / Chi tiết</th>
                   <th className="px-4 py-3 font-medium">Nguồn ra lệnh</th>
+                  <th className="px-4 py-3 font-medium">Người thực hiện</th>
                   <th className="px-4 py-3 font-medium">Thời gian</th>
                   <th className="px-4 py-3 font-medium">Trạng thái</th>
                 </tr>
@@ -180,7 +194,7 @@ export default function Logs() {
               <tbody>
                 {events.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-white/70">
+                    <td colSpan={6} className="px-4 py-8 text-center text-white/70">
                       Chưa có sự kiện nào. Dữ liệu sẽ xuất hiện khi bạn điều khiển thiết bị hoặc khi ESP32 phản hồi.
                     </td>
                   </tr>
@@ -201,6 +215,7 @@ export default function Logs() {
                           {evt.actor || 'USER'}
                         </span>
                       </td>
+                      <td className="px-4 py-3 text-white/90">{evt.user || '—'}</td>
                       <td className="px-4 py-3 text-xs text-white/60 font-mono">{formatStamp(evt.created_at)}</td>
                       <td className="px-4 py-3">
                         <span

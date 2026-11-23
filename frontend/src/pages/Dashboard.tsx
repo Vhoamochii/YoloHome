@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { deviceAPI, Device, sensorAPI, SensorCurrent, SensorPoint, User } from '../services/api'
 import { loadThresholds } from '../components/ThresholdModal'
+import SensorChart from '../components/SensorChart'
 
 interface ShellContext {
   user: User | null
@@ -22,7 +23,7 @@ export default function Dashboard() {
 
   const load = () => {
     sensorAPI.getCurrent().then((response) => setSensors(response.data)).catch(() => setError('Không đọc được cảm biến'))
-    sensorAPI.getHistory(24).then((response) => setHistory(response.data.data.slice(-6).reverse())).catch(() => undefined)
+    sensorAPI.getHistory(24).then((response) => setHistory(response.data.data)).catch(() => undefined)
     deviceAPI.getAll().then((response) => setDevices(response.data)).catch(() => undefined)
   }
 
@@ -35,55 +36,63 @@ export default function Dashboard() {
   const name = user?.name || 'bạn'
   const hot = sensors.temperature !== null && sensors.temperature >= thresholds.maxTemp
   const humid = sensors.humidity !== null && sensors.humidity >= thresholds.maxHumidity
+  const recent = history.slice(-6).reverse()
 
   return (
-    <div className="flex min-h-[70vh] flex-col justify-center gap-6 lg:flex-row lg:items-center">
-      <div className="lg:w-[42%] lg:pl-6">
-        <h1 className="text-4xl font-semibold text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)] lg:text-5xl">Hey, {name}!</h1>
-        <p className="mt-3 text-lg text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)] lg:text-xl">Ready to control your smart home?</p>
-        {(hot || humid) && (
-          <p className="mt-4 max-w-xs rounded-2xl bg-yellow-300/90 px-4 py-2 text-sm font-medium text-black">
-            {hot ? `Nhiệt độ đã chạm ngưỡng ${thresholds.maxTemp}°C. ` : ''}
-            {humid ? `Độ ẩm đã chạm ngưỡng ${thresholds.maxHumidity}%.` : ''}
-          </p>
-        )}
+    <div className="flex flex-col gap-6 py-4">
+      <div className="flex min-h-[50vh] flex-col justify-center gap-6 lg:flex-row lg:items-center">
+        <div className="lg:w-[42%] lg:pl-6">
+          <h1 className="text-4xl font-semibold text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)] lg:text-5xl">Hey, {name}!</h1>
+          <p className="mt-3 text-lg text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)] lg:text-xl">Ready to control your smart home?</p>
+          {(hot || humid) && (
+            <p className="mt-4 max-w-xs rounded-2xl bg-yellow-300/90 px-4 py-2 text-sm font-medium text-black">
+              {hot ? `Nhiệt độ đã chạm ngưỡng ${thresholds.maxTemp}°C. ` : ''}
+              {humid ? `Độ ẩm đã chạm ngưỡng ${thresholds.maxHumidity}%.` : ''}
+            </p>
+          )}
+        </div>
+
+        <div className="glass w-full space-y-3 rounded-[28px] p-4 lg:ml-auto lg:w-[340px]">
+          <section className="glass-card rounded-2xl p-4">
+            <h2 className="font-semibold">Tổng quan môi trường</h2>
+            <p className="mt-3 text-sm">Nhiệt độ: {sensors.temperature != null ? `${sensors.temperature}°C` : '--'}</p>
+            <p className="text-sm">Độ ẩm: {sensors.humidity != null ? `${sensors.humidity}%` : '--'}</p>
+            <p className="mt-2 text-xs text-white/70">{sensors.timestamp ? `Cập nhật ${formatTime(sensors.timestamp)}` : 'Chưa có dữ liệu cảm biến'}</p>
+            {error && <p className="mt-2 text-xs text-yellow-200">{error}</p>}
+          </section>
+
+          <section className="glass-card rounded-2xl p-4">
+            <h2 className="font-semibold">Thiết bị</h2>
+            <ul className="mt-3 space-y-1 text-sm">
+              {devices.length === 0 && <li>Chưa có thiết bị</li>}
+              {devices.map((device) => (
+                <li key={device.id}>
+                  • {device.name}:{' '}
+                  {device.type === 'led'
+                    ? device.is_alert || (device.status && device.color === 'FF0000')
+                      ? '🔴 CẢNH BÁO ĐỎ (> 35°C)'
+                      : '🟢 Bình thường'
+                    : `${device.status ? 'bật' : 'tắt'}${device.type === 'fan' ? ` ${device.speed}%` : ''}`}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="glass-card rounded-2xl p-4">
+            <h2 className="font-semibold">Nhật ký cảm biến gần đây</h2>
+            <ul className="mt-3 space-y-1 text-sm">
+              {recent.length === 0 && <li className="text-xs text-white/60">Chưa có dữ liệu lịch sử từ ESP32</li>}
+              {recent.map((point) => (
+                <li key={point.id}>{formatTime(point.recorded_at)} · {point.temperature ?? '--'}°C · {point.humidity ?? '--'}%</li>
+              ))}
+            </ul>
+          </section>
+        </div>
       </div>
 
-      <div className="glass w-full space-y-3 rounded-[28px] p-4 lg:ml-auto lg:w-[340px]">
-        <section className="glass-card rounded-2xl p-4">
-          <h2 className="font-semibold">Tổng quan môi trường</h2>
-          <p className="mt-3 text-sm">Nhiệt độ: {sensors.temperature != null ? `${sensors.temperature}°C` : '--'}</p>
-          <p className="text-sm">Độ ẩm: {sensors.humidity != null ? `${sensors.humidity}%` : '--'}</p>
-          <p className="mt-2 text-xs text-white/70">{sensors.timestamp ? `Cập nhật ${formatTime(sensors.timestamp)}` : 'Chưa có dữ liệu cảm biến'}</p>
-          {error && <p className="mt-2 text-xs text-yellow-200">{error}</p>}
-        </section>
-
-        <section className="glass-card rounded-2xl p-4">
-          <h2 className="font-semibold">Thiết bị</h2>
-          <ul className="mt-3 space-y-1 text-sm">
-            {devices.length === 0 && <li>Chưa có thiết bị</li>}
-            {devices.map((device) => (
-              <li key={device.id}>
-                • {device.name}:{' '}
-                {device.type === 'led'
-                  ? device.is_alert || (device.status && device.color === 'FF0000')
-                    ? '🔴 CẢNH BÁO ĐỎ (> 35°C)'
-                    : '🟢 Bình thường'
-                  : `${device.status ? 'bật' : 'tắt'}${device.type === 'fan' ? ` ${device.speed}%` : ''}`}
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="glass-card rounded-2xl p-4">
-          <h2 className="font-semibold">Nhật ký cảm biến gần đây</h2>
-          <ul className="mt-3 space-y-1 text-sm">
-            {history.length === 0 && <li className="text-xs text-white/60">Chưa có dữ liệu lịch sử từ ESP32</li>}
-            {history.map((point) => (
-              <li key={point.id}>{formatTime(point.recorded_at)} · {point.temperature ?? '--'}°C · {point.humidity ?? '--'}%</li>
-            ))}
-          </ul>
-        </section>
+      <div className="grid gap-4 md:grid-cols-2">
+        <SensorChart title="Nhiệt độ" unit="°C" color="#d95926" field="temperature" history={history} />
+        <SensorChart title="Độ ẩm" unit="%" color="#3987e5" field="humidity" history={history} />
       </div>
     </div>
   )

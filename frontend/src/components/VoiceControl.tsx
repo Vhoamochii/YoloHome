@@ -10,7 +10,6 @@ export default function VoiceControl() {
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript
       console.log('Voice command:', transcript)
-      // TODO: Parse and send command
     }
     
     recognition.start()

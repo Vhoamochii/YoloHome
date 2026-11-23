@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import engine, Base, upgrade_schema
@@ -53,10 +53,12 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
-app.include_router(sensors.router, prefix="/api/sensors", tags=["sensors"])
-app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
-app.include_router(activity.router, prefix="/api/activity", tags=["activity"])
+# Everything except /api/auth needs a signed-in user (401 sends the web app back to /login).
+signed_in = [Depends(auth.require_user)]
+app.include_router(devices.router, prefix="/api/devices", tags=["devices"], dependencies=signed_in)
+app.include_router(sensors.router, prefix="/api/sensors", tags=["sensors"], dependencies=signed_in)
+app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"], dependencies=signed_in)
+app.include_router(activity.router, prefix="/api/activity", tags=["activity"], dependencies=signed_in)
 app.include_router(webhook.router, prefix="/api/webhook", tags=["webhook"])
 
 @app.get("/")

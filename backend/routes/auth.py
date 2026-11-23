@@ -6,10 +6,12 @@ import secrets
 import threading
 import time
 from collections import Counter
+from pathlib import Path
 from typing import List, Literal, Optional
 
 import cv2
 import numpy as np
+from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func
@@ -18,6 +20,9 @@ from sqlalchemy.orm import Session
 import face_engine
 from database import get_db
 from models import FaceTemplate, User
+
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv()
 
 router = APIRouter()
 
